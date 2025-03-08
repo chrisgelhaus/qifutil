@@ -18,35 +18,35 @@ To use QIFUTIL, run the executable with the desired options.
 To export the list of accounts, use the following command:
 
 ```sh
-./qifutil export accounts --inputFile "" --output "accounts.csv"
+./qifutil export accounts --inputFile "AllAccounts.QIF" --output "accounts.csv"
 ```
 
 ### Export Categories List
 To export the list of categories, use the following command:
 
 ```sh
-./qifutil export categories --inputFile "" --output "categories.csv"
+qifutil export categories --inputFile "AllAccounts.QIF" --output "categories.csv"
 ```
 
 ### Export Payees List
 To export the list of payees, use the following command:
 
 ```sh
-./qifutil export payees --inputFile "" --output "payees.csv"
+qifutil export payees --inputFile "AllAccounts.QIF" --output "payees.csv"
 ```
 
 ### Export Tags List
 To export the list of tags, use the following command:
 
 ```sh
-./qifutil export tags --inputFile "" --output "tags.csv"
+qifutil export tags --inputFile "AllAccounts.QIF" --output "tags.csv"
 ```
 
 ### Export Transactions List
 To export the transactions, use the following command:
 
 ```sh
-./qifutil export transactions --inputFile "AllAccounts.QIF" --outputPath "C:\export\\" --categoryMapFile "categories.csv" --accountMapFile "accounts.csv" --payeeMapFile "payees.csv" --tagMapFile "tags.csv" --addTagForImport true
+qifutil export transactions --inputFile "AllAccounts.QIF" --outputPath "C:\export\\" --categoryMapFile "categories.csv" --accountMapFile "accounts.csv" --payeeMapFile "payees.csv" --tagMapFile "tags.csv" --addTagForImport true
 ```
 
 ## Contributing
