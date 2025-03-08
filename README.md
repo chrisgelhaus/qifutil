@@ -21,6 +21,33 @@ To export the list of accounts, use the following command:
 ./qifutil export accounts --inputFile "" --output "accounts.csv"
 ```
 
+### Export Categories List
+To export the list of categories, use the following command:
+
+```sh
+./qifutil export categories --inputFile "" --output "categories.csv"
+```
+
+### Export Payees List
+To export the list of payees, use the following command:
+
+```sh
+./qifutil export payees --inputFile "" --output "payees.csv"
+```
+
+### Export Tags List
+To export the list of tags, use the following command:
+
+```sh
+./qifutil export tags --inputFile "" --output "tags.csv"
+```
+
+### Export Transactions List
+To export the transactions, use the following command:
+
+```sh
+./qifutil export transactions --inputFile "AllAccounts.QIF" --outputPath "C:\export\\" --categoryMapFile "categories.csv" --accountMapFile "accounts.csv" --payeeMapFile "payees.csv" --tagMapFile "tags.csv" --addTagForImport true
+```
 
 ## Contributing
 
