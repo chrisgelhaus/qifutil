@@ -12,11 +12,15 @@ QIFUTIL is a utility for exporting financial data from Quicken in QIF format. Th
 
 ## Usage
 
-To use QIFUTIL, run the executable with the desired options. For example:
+To use QIFUTIL, run the executable with the desired options. 
+
+### Export Account List
+To export the list of accounts, use the following command:
 
 ```sh
-./qifutil --account "Checking" --output checking.qif
+./qifutil export accounts --inputFile "" --output "accounts.csv"
 ```
+
 
 ## Contributing
 
