@@ -1,2 +1,2 @@
-# qifutil
+# QIFUTIL
 Quicken QIF Export Utility
