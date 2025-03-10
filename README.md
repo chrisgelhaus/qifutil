@@ -18,7 +18,7 @@ To use QIFUTIL, run the executable with the desired options.
 To export the list of accounts, use the following command:
 
 ```sh
-./qifutil export accounts --inputFile "AllAccounts.QIF" --output "accounts.csv"
+qifutil export accounts --inputFile "AllAccounts.QIF" --output "accounts.csv"
 ```
 
 ### Export Categories List
