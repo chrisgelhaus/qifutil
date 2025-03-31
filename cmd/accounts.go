@@ -14,6 +14,7 @@ import (
 )
 
 // accountsCmd represents the accounts command
+var accountOutputFile string
 var accountsCmd = &cobra.Command{
 	Use:   "accounts",
 	Short: "Extract account names from a QIF file",
@@ -23,10 +24,6 @@ var accountsCmd = &cobra.Command{
 			fmt.Println("Error: Missing required flag --inputFile")
 			os.Exit(1)
 		}
-		if outputFile == "" {
-			fmt.Println("Error: Missing required flag --outputFile")
-			os.Exit(1)
-		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 
@@ -34,11 +31,11 @@ var accountsCmd = &cobra.Command{
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
 		// Create the account output file
-		accountFile, err := os.Create(outputFile)
+		accountFile, err := os.Create(accountOutputFile)
 		if err != nil {
 			fmt.Println("Error creating account file:", err)
 		} else {
-			fmt.Println("Created account output file.")
+			fmt.Println("Created account output file,", accountOutputFile)
 		}
 		defer accountFile.Close()
 
@@ -106,7 +103,7 @@ func init() {
 	// is called directly, e.g.:
 	// accountsCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	accountsCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
-	accountsCmd.Flags().StringVarP(&outputFile, "outputFile", "o", "accounts.csv", "Output file for account names")
+	accountsCmd.Flags().StringVarP(&accountOutputFile, "outputFile", "o", "accounts.csv", "Output file for account names")
 	accountsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, etc.). Currently only CSV is supported.")
 
 }

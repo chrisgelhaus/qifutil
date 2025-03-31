@@ -12,7 +12,8 @@ import (
 var version = "0.10.0"
 
 var inputFile string
-var outputFile string
+
+// var outputFile string
 var outputFormat string
 
 // rootCmd represents the base command when called without any subcommands

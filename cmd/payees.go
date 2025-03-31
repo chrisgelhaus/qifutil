@@ -13,6 +13,7 @@ import (
 )
 
 // payeesCmd represents the payees command
+var payeeOutputFile string
 var payeesCmd = &cobra.Command{
 	Use:   "payees",
 	Short: "Extract payees from a QIF file",
@@ -20,10 +21,6 @@ var payeesCmd = &cobra.Command{
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if inputFile == "" {
 			fmt.Println("Error: Missing required flag --inputFile")
-			os.Exit(1)
-		}
-		if outputFile == "" {
-			fmt.Println("Error: Missing required flag --outputFile")
 			os.Exit(1)
 		}
 	},
@@ -34,7 +31,7 @@ var payeesCmd = &cobra.Command{
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
 		// Create the category output file
-		payeeFile, err := os.Create(outputFile)
+		payeeFile, err := os.Create(payeeOutputFile)
 		if err != nil {
 			fmt.Println("Error creating category file:", err)
 		} else {
@@ -128,6 +125,6 @@ func init() {
 	// is called directly, e.g.:
 	// payeesCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	payeesCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
-	payeesCmd.Flags().StringVarP(&outputFile, "outputFile", "o", "payees.csv", "Output file for payee names")
+	payeesCmd.Flags().StringVarP(&payeeOutputFile, "outputFile", "o", "payees.csv", "Output file for payee names")
 	payeesCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, etc.). Currently only CSV is supported.")
 }

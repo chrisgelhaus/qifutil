@@ -13,6 +13,7 @@ import (
 )
 
 // categoriesCmd represents the categories command
+var categoryOutputFile string
 var categoriesCmd = &cobra.Command{
 	Use:   "categories",
 	Short: "Extract categories from a QIF file",
@@ -20,10 +21,6 @@ var categoriesCmd = &cobra.Command{
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if inputFile == "" {
 			fmt.Println("Error: Missing required flag --inputFile")
-			os.Exit(1)
-		}
-		if outputFile == "" {
-			fmt.Println("Error: Missing required flag --outputFile")
 			os.Exit(1)
 		}
 	},
@@ -35,7 +32,7 @@ var categoriesCmd = &cobra.Command{
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
 		// Create the category output file
-		categoryFile, err := os.Create(outputFile)
+		categoryFile, err := os.Create(categoryOutputFile)
 		if err != nil {
 			fmt.Println("Error creating category file:", err)
 			//return err
@@ -189,7 +186,7 @@ func init() {
 	// is called directly, e.g.:
 	// categoriesCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	categoriesCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
-	categoriesCmd.Flags().StringVarP(&outputFile, "outputFile", "o", "categories.csv", "Output file for category names")
+	categoriesCmd.Flags().StringVarP(&categoryOutputFile, "outputFile", "o", "categories.csv", "Output file for category names")
 	categoriesCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, etc.). Currently only CSV is supported.")
 }
 

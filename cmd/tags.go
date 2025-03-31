@@ -13,6 +13,7 @@ import (
 )
 
 // tagsCmd represents the tags command
+var tagsOutputFile string
 var tagsCmd = &cobra.Command{
 	Use:   "tags",
 	Short: "Extract tags from a QIF file",
@@ -20,10 +21,6 @@ var tagsCmd = &cobra.Command{
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if inputFile == "" {
 			fmt.Println("Error: Missing required flag --inputFile")
-			os.Exit(1)
-		}
-		if outputFile == "" {
-			fmt.Println("Error: Missing required flag --outputFile")
 			os.Exit(1)
 		}
 	},
@@ -35,7 +32,7 @@ var tagsCmd = &cobra.Command{
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
 		// Create the tag output file
-		tagFile, err := os.Create(outputFile)
+		tagFile, err := os.Create(tagsOutputFile)
 		if err != nil {
 			fmt.Println("Error creating tag file:", err)
 		} else {
@@ -182,6 +179,6 @@ func init() {
 	// is called directly, e.g.:
 	// tagsCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	tagsCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
-	tagsCmd.Flags().StringVarP(&outputFile, "outputFile", "o", "tags.csv", "Output file for tag names")
+	tagsCmd.Flags().StringVarP(&tagsOutputFile, "outputFile", "o", "tags.csv", "Output file for tag names")
 	tagsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, etc.). Currently only CSV is supported.")
 }

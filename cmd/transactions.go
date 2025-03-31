@@ -19,6 +19,7 @@ var payeeMappingFile string
 var tagMappingFile string
 var outputPath string
 var addTagForImport bool = false
+var maxRecordsPerFile int = 5000
 
 // transactionsCmd represents the transactions command
 var transactionsCmd = &cobra.Command{
@@ -33,10 +34,6 @@ var transactionsCmd = &cobra.Command{
 			fmt.Println("Error: Missing required flag --inputFile")
 			os.Exit(1)
 		}
-		if outputPath == "" {
-			fmt.Println("Error: Missing required flag --outputPath")
-			os.Exit(1)
-		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Begin Export Transactions")
@@ -44,7 +41,7 @@ var transactionsCmd = &cobra.Command{
 		// Output CSV Header
 		var transactionRegexString string = `D(?<month>\d{1,2})\/(\s?(?<day>\d{1,2}))'(?<year>\d{2})[\r\n]+(U(?<amount1>.*?)[\r\n]+)(T(?<amount2>.*?)[\r\n]+)(C(?<cleared>.*?)[\r\n]+)((N(?<number>.*?)[\r\n]+)?)(P(?<payee>.*?)[\r\n]+)((M(?<memo>.*?)[\r\n]+)?)(L(?<category>.*?)[\r\n]+)`
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
-		outputCSVHeader := "Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags\n"
+		var outputCSVHeader string = "Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags\n"
 		var categoryMapping map[string]string
 		var payeeMapping map[string]string
 		var accountMapping map[string]string
@@ -137,9 +134,10 @@ var transactionsCmd = &cobra.Command{
 			fmt.Println("No matches found.")
 		}
 
-		// loop over each account block
-		// Find all matches for transactions
+		// loop over each account block and Find all transaction matches
 		for _, accountBlock := range accountBlocks {
+
+			// Extract the account name from the matched block and map it using the account mapping if available.
 			var outputAccountName string
 			accountName := inputContent[accountBlock[2]:accountBlock[3]]
 			if len(accountMapping[accountName]) > 0 {
@@ -159,17 +157,18 @@ var transactionsCmd = &cobra.Command{
 				endPos = len(inputContent)
 			}
 
+			fileIndex := 1
+			count := 0
 			// Create unique output file per Account
-			outputFile, err := os.Create(outputPath + accountName + ".csv")
+			outputFileName := fmt.Sprintf("%s_%d.csv", accountName, fileIndex)
+			outputFile, err := os.Create(outputPath + outputFileName)
 			if err != nil {
 				fmt.Println("Error creating file:", err)
 				return
 			}
-
-			// Write header to the output file.
-			_, err = outputFile.WriteString(outputCSVHeader)
-			if err != nil {
-				fmt.Println("Error writing to file:", err)
+			if err := writeHeader(outputFile, outputCSVHeader); err != nil {
+				outputFile.Close()
+				fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
 				return
 			}
 
@@ -185,9 +184,12 @@ var transactionsCmd = &cobra.Command{
 			// Find all transactions in the content.
 			transactions := regex.FindAllStringSubmatch(textBetweenTypes, -1)
 
+			// Print the number of transactions found
+			fmt.Printf("Number of transactions found: %d\n", len(transactions))
+
 			for _, t := range transactions {
 				// Check if there is a captured group and extract the content.
-				if len(t) > 1 { // Ensure there is a captured group.
+				if len(t) > 1 {
 					month := strings.TrimSpace(t[1])
 					day := strings.TrimSpace(t[2])
 					year := strings.TrimSpace(t[4])
@@ -238,12 +240,31 @@ var transactionsCmd = &cobra.Command{
 					// Write the transaction to the output file
 
 					// This output is compatiple with the Monarch CSV Importer
-					_, err := outputFile.WriteString("\"" + fullDate + "\",\"" + payee + "\",\"" + category + "\",\"" + outputAccountName + "\",\"" + payee + "\",\"" + transactionMemo + "\",\"" + amount1 + "\",\"" + tag + "\"\n")
-
-					if err != nil {
-						fmt.Println("Error writing to file:", err)
+					//_, err := outputFile.WriteString("\"" + fullDate + "\",\"" + payee + "\",\"" + category + "\",\"" + outputAccountName + "\",\"" + payee + "\",\"" + transactionMemo + "\",\"" + amount1 + "\",\"" + tag + "\"\n")
+					line := "\"" + fullDate + "\",\"" + payee + "\",\"" + category + "\",\"" + outputAccountName + "\",\"" + payee + "\",\"" + transactionMemo + "\",\"" + amount1 + "\",\"" + tag + "\"\n"
+					if err := writeTransaction(outputFile, line); err != nil {
+						outputFile.Close()
+						fmt.Printf("failed to write transaction: %w\n", err)
 						return
 					}
+					count++
+					// Check batch size.
+					if count%maxRecordsPerFile == 0 {
+						outputFile.Close()
+						fileIndex++
+						outputFileName = fmt.Sprintf("%s_%d.csv", accountName, fileIndex)
+						outputFile, err = os.Create(outputPath + outputFileName)
+						if err != nil {
+							fmt.Println("Error creating file:", err)
+							return
+						}
+						if err := writeHeader(outputFile, outputCSVHeader); err != nil {
+							outputFile.Close()
+							fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
+							return
+						}
+					}
+
 				}
 			}
 			outputFile.Close()
@@ -267,6 +288,7 @@ func init() {
 	transactionsCmd.Flags().StringVarP(&payeeMappingFile, "payeeMapFile", "p", "", "Supplied mapping file for payees. Optional.")
 	transactionsCmd.Flags().StringVarP(&tagMappingFile, "tagMapFile", "t", "", "Supplied mapping file for tags. Optional.")
 	transactionsCmd.Flags().StringVarP(&outputPath, "outputPath", "", "", "Output path for transaction file")
+	transactionsCmd.Flags().IntVarP(&maxRecordsPerFile, "recordsPerFile", "r", 5000, "Optional. Maximum number of records per CSV file. Default is 5000. If set to 0, all records will be written to a single file.")
 	transactionsCmd.Flags().BoolVarP(&addTagForImport, "addTagForImport", "", true, "Add a custom tag to the transaction for import purposes")
 }
 
@@ -320,4 +342,20 @@ func applyMapping(input string, mapping map[string]string) string {
 	}
 	// If no mapping is found, return the original input.
 	return input
+}
+
+func writeHeader(f *os.File, h string) error {
+	_, err := f.WriteString(h)
+	return err
+}
+
+func writeTransaction(f *os.File, t string) error {
+	_, err := f.WriteString(t)
+	return err
+}
+
+func writeTransactionsToCSVFile(transactions []string, header string, outputPath string, outputAccountName string, maxRecordsPerFile int) {
+	if maxRecordsPerFile == 0 {
+
+	}
 }
