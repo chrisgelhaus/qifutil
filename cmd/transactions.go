@@ -244,7 +244,7 @@ var transactionsCmd = &cobra.Command{
 					line := "\"" + fullDate + "\",\"" + payee + "\",\"" + category + "\",\"" + outputAccountName + "\",\"" + payee + "\",\"" + transactionMemo + "\",\"" + amount1 + "\",\"" + tag + "\"\n"
 					if err := writeTransaction(outputFile, line); err != nil {
 						outputFile.Close()
-						fmt.Printf("failed to write transaction: %w\n", err)
+						fmt.Printf("failed to write transaction: %v\n", err)
 						return
 					}
 					count++
@@ -352,10 +352,4 @@ func writeHeader(f *os.File, h string) error {
 func writeTransaction(f *os.File, t string) error {
 	_, err := f.WriteString(t)
 	return err
-}
-
-func writeTransactionsToCSVFile(transactions []string, header string, outputPath string, outputAccountName string, maxRecordsPerFile int) {
-	if maxRecordsPerFile == 0 {
-
-	}
 }
