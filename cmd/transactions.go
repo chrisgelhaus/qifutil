@@ -17,6 +17,7 @@ var categoryMappingFile string
 var accountMappingFile string
 var payeeMappingFile string
 var tagMappingFile string
+var outputFields string
 var outputPath string
 var addTagForImport bool = false
 var maxRecordsPerFile int = 5000
@@ -27,8 +28,23 @@ var transactionsCmd = &cobra.Command{
 	Short: "Export transactions from a QIF file",
 	Long: `Export transactions from a QIF file.
 	Command takes a QIF file as input and exports transactions to CSV files.
+	
 	Optional mapping files can be used to map categories, payees, accounts and tags.
-	Each account in the QIF file will have its own CSV file.`,
+	
+	Each account in the QIF file will have its own CSV file.
+	
+	Accounts will be broken into multiple files if the transaction countis greater than the recordsPerFile value.
+	
+	Valid values for outputFields are:
+		Date,
+		Amount1,
+		Amount2,
+		Memo
+		Cleared,
+		Number,
+		Payee,
+		Category,
+		Tags`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if inputFile == "" {
 			fmt.Println("Error: Missing required flag --inputFile")
@@ -282,6 +298,7 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	transactionsCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
+	transactionsCmd.Flags().StringVarP(&outputFields, "outputFields", "", "", "Comma Separated list of fields to export from the QIF File.")
 	transactionsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, etc.). Currently only CSV is supported.")
 	transactionsCmd.Flags().StringVarP(&accountMappingFile, "accountMapFile", "a", "", "Supplied mapping file for accounts. Optional.")
 	transactionsCmd.Flags().StringVarP(&categoryMappingFile, "categoryMapFile", "c", "", "Supplied mapping file for categories. Optional.")
