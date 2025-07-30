@@ -72,12 +72,13 @@ var categoriesCmd = &cobra.Command{
 		nextTypePattern := `(?mi)^\s*!Type:.*$`
 		nextTypeRe := regexp.MustCompile(nextTypePattern)
 		nextLoc := nextTypeRe.FindStringIndex(restOfText)
-		fmt.Printf("Next type found at:%d\n", nextLoc[1])
 		var endPos int
 		if nextLoc != nil {
+			fmt.Printf("Next type found at:%d\n", nextLoc[1])
 			// Found another Type line.
 			endPos = loc[1] + nextLoc[0]
 		} else {
+			fmt.Printf("No next type block found.\n")
 			// No other Type found
 			endPos = len(inputContent)
 		}
