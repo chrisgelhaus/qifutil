@@ -9,7 +9,7 @@ QIFUTIL is a utility for exporting financial data from Quicken in QIF format. Th
 - Support for multiple accounts
 - Easy-to-use command-line interface
 - Customizable export options
-- Supports CSV and JSON output formats
+ - Supports CSV, JSON, and XML output formats
 
 ## Usage
 
@@ -21,7 +21,7 @@ To export the list of accounts, use the following command:
 ```sh
 qifutil export accounts --inputFile "AllAccounts.QIF" --output "accounts.csv"
 ```
-Use the `--outputFormat` flag to specify `CSV` or `JSON` (default `CSV`).
+Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`).
 
 ### Export Categories List
 To export the list of categories, use the following command:
@@ -29,7 +29,7 @@ To export the list of categories, use the following command:
 ```sh
 qifutil export categories --inputFile "AllAccounts.QIF" --output "categories.csv"
 ```
-Use the `--outputFormat` flag to specify `CSV` or `JSON` (default `CSV`).
+Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`).
 
 ### Export Payees List
 To export the list of payees, use the following command:
@@ -37,7 +37,7 @@ To export the list of payees, use the following command:
 ```sh
 qifutil export payees --inputFile "AllAccounts.QIF" --output "payees.csv"
 ```
-Use the `--outputFormat` flag to specify `CSV` or `JSON` (default `CSV`).
+Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`).
 
 ### Export Tags List
 To export the list of tags, use the following command:
@@ -45,7 +45,7 @@ To export the list of tags, use the following command:
 ```sh
 qifutil export tags --inputFile "AllAccounts.QIF" --output "tags.csv"
 ```
-Use the `--outputFormat` flag to specify `CSV` or `JSON` (default `CSV`).
+Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`).
 
 ### Export Transactions List
 To export the transactions, use the following command:
@@ -53,7 +53,7 @@ To export the transactions, use the following command:
 ```sh
 qifutil export transactions --inputFile "AllAccounts.QIF" --outputPath "C:\export\\" --categoryMapFile "categories.csv" --accountMapFile "accounts.csv" --payeeMapFile "payees.csv" --tagMapFile "tags.csv" --addTagForImport true
 ```
-Use the `--outputFormat` flag to specify `CSV` or `JSON` (default `CSV`).
+Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`).
 
 ## Contributing
 

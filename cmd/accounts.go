@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"regexp"
@@ -16,6 +17,12 @@ import (
 
 // accountsCmd represents the accounts command
 var accountOutputFile string
+
+type accountList struct {
+	XMLName  xml.Name `xml:"accounts"`
+	Accounts []string `xml:"account"`
+}
+
 var accountsCmd = &cobra.Command{
 	Use:   "accounts",
 	Short: "Extract account names from a QIF file",
@@ -83,6 +90,14 @@ var accountsCmd = &cobra.Command{
 				return
 			}
 			accountFile.Write(jsonData)
+		case "XML":
+			xmlData, err := xml.MarshalIndent(accountList{Accounts: outputAccountList}, "", "  ")
+			if err != nil {
+				fmt.Printf("Error marshaling XML: %v\n", err)
+				return
+			}
+			accountFile.Write([]byte(xml.Header))
+			accountFile.Write(xmlData)
 		default:
 			for _, item := range outputAccountList {
 				_, err := accountFile.WriteString(fmt.Sprintf("\"%s\"\n", item))
@@ -115,7 +130,7 @@ func init() {
 	// accountsCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	accountsCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
 	accountsCmd.Flags().StringVarP(&accountOutputFile, "outputFile", "o", "accounts.csv", "Output file for account names")
-	accountsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, etc.). Currently only CSV is supported.")
+	accountsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, XML).")
 
 }
 
