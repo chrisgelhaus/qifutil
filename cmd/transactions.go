@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
@@ -21,6 +22,17 @@ var outputFields string
 var outputPath string
 var addTagForImport bool = false
 var maxRecordsPerFile int = 5000
+
+type TransactionRecord struct {
+	Date              string `json:"date"`
+	Merchant          string `json:"merchant"`
+	Category          string `json:"category"`
+	Account           string `json:"account"`
+	OriginalStatement string `json:"original_statement"`
+	Notes             string `json:"notes"`
+	Amount            string `json:"amount"`
+	Tags              string `json:"tags"`
+}
 
 // transactionsCmd represents the transactions command
 var transactionsCmd = &cobra.Command{
@@ -175,17 +187,24 @@ var transactionsCmd = &cobra.Command{
 
 			fileIndex := 1
 			count := 0
+			var records []TransactionRecord
 			// Create unique output file per Account
-			outputFileName := fmt.Sprintf("%s_%d.csv", accountName, fileIndex)
+			ext := ".csv"
+			if strings.ToUpper(outputFormat) == "JSON" {
+				ext = ".json"
+			}
+			outputFileName := fmt.Sprintf("%s_%d%s", accountName, fileIndex, ext)
 			outputFile, err := os.Create(outputPath + outputFileName)
 			if err != nil {
 				fmt.Println("Error creating file:", err)
 				return
 			}
-			if err := writeHeader(outputFile, outputCSVHeader); err != nil {
-				outputFile.Close()
-				fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
-				return
+			if strings.ToUpper(outputFormat) == "CSV" {
+				if err := writeHeader(outputFile, outputCSVHeader); err != nil {
+					outputFile.Close()
+					fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
+					return
+				}
 			}
 
 			// Extract the text between the type lines
@@ -204,7 +223,6 @@ var transactionsCmd = &cobra.Command{
 			fmt.Printf("Number of transactions found: %d\n", len(transactions))
 
 			for _, t := range transactions {
-				// Check if there is a captured group and extract the content.
 				if len(t) > 1 {
 					month := strings.TrimSpace(t[1])
 					day := strings.TrimSpace(t[2])
@@ -252,36 +270,62 @@ var transactionsCmd = &cobra.Command{
 					fullDay := day[len(day)-2:]
 					fullDate := fullYear + "-" + fullMonth + "-" + fullDay
 
-					// Surround output values with double quotes to ensure they are treated as strings
-					// Write the transaction to the output file
-
-					// This output is compatiple with the Monarch CSV Importer
-					//_, err := outputFile.WriteString("\"" + fullDate + "\",\"" + payee + "\",\"" + category + "\",\"" + outputAccountName + "\",\"" + payee + "\",\"" + transactionMemo + "\",\"" + amount1 + "\",\"" + tag + "\"\n")
-					line := "\"" + fullDate + "\",\"" + payee + "\",\"" + category + "\",\"" + outputAccountName + "\",\"" + payee + "\",\"" + transactionMemo + "\",\"" + amount1 + "\",\"" + tag + "\"\n"
-					if err := writeTransaction(outputFile, line); err != nil {
-						outputFile.Close()
-						fmt.Printf("failed to write transaction: %v\n", err)
-						return
+					record := TransactionRecord{
+						Date:              fullDate,
+						Merchant:          payee,
+						Category:          category,
+						Account:           outputAccountName,
+						OriginalStatement: payee,
+						Notes:             transactionMemo,
+						Amount:            amount1,
+						Tags:              tag,
 					}
+
+					if strings.ToUpper(outputFormat) == "JSON" {
+						records = append(records, record)
+					} else {
+						line := fmt.Sprintf("\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n", record.Date, record.Merchant, record.Category, record.Account, record.OriginalStatement, record.Notes, record.Amount, record.Tags)
+						if err := writeTransaction(outputFile, line); err != nil {
+							outputFile.Close()
+							fmt.Printf("failed to write transaction: %v\n", err)
+							return
+						}
+					}
+
 					count++
-					// Check batch size.
-					if count%maxRecordsPerFile == 0 {
+					if maxRecordsPerFile != 0 && count%maxRecordsPerFile == 0 {
+						if strings.ToUpper(outputFormat) == "JSON" {
+							jsonData, err := json.MarshalIndent(records, "", "  ")
+							if err == nil {
+								outputFile.Write(jsonData)
+							}
+							records = nil
+						}
 						outputFile.Close()
 						fileIndex++
-						outputFileName = fmt.Sprintf("%s_%d.csv", accountName, fileIndex)
+						outputFileName = fmt.Sprintf("%s_%d%s", accountName, fileIndex, ext)
 						outputFile, err = os.Create(outputPath + outputFileName)
 						if err != nil {
 							fmt.Println("Error creating file:", err)
 							return
 						}
-						if err := writeHeader(outputFile, outputCSVHeader); err != nil {
-							outputFile.Close()
-							fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
-							return
+						if strings.ToUpper(outputFormat) == "CSV" {
+							if err := writeHeader(outputFile, outputCSVHeader); err != nil {
+								outputFile.Close()
+								fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
+								return
+							}
 						}
 					}
 
 				}
+			}
+			if strings.ToUpper(outputFormat) == "JSON" && len(records) > 0 {
+				jsonData, err := json.MarshalIndent(records, "", "  ")
+				if err == nil {
+					outputFile.Write(jsonData)
+				}
+				records = nil
 			}
 			outputFile.Close()
 		}

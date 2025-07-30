@@ -4,6 +4,7 @@ Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
@@ -62,22 +63,32 @@ var accountsCmd = &cobra.Command{
 			fmt.Println("No matches found.")
 		}
 
-		// loop over each account block and pull out payees
+		// loop over each account block and pull out account names
 		for _, accountBlock := range accountBlocks {
 			accountName := inputContent[accountBlock[2]:accountBlock[3]]
 			accountName = strings.TrimSpace(accountName)
 			// Remove double quotes
 			accountName = strings.ReplaceAll(accountName, "\"", "")
-			accountNames = append(accountNames, fmt.Sprintf("\"%s\"", accountName))
+			accountNames = append(accountNames, accountName)
 		}
 
 		// Sort and dedupe payee list
 		outputAccountList := sortAndDedupStrings(accountNames)
-		// Write payees to the file
-		for _, item := range outputAccountList {
-			_, err := accountFile.WriteString(item + "\n")
+
+		switch strings.ToUpper(outputFormat) {
+		case "JSON":
+			jsonData, err := json.MarshalIndent(outputAccountList, "", "  ")
 			if err != nil {
-				fmt.Printf("Error Writing to account file:\n")
+				fmt.Printf("Error marshaling JSON: %v\n", err)
+				return
+			}
+			accountFile.Write(jsonData)
+		default:
+			for _, item := range outputAccountList {
+				_, err := accountFile.WriteString(fmt.Sprintf("\"%s\"\n", item))
+				if err != nil {
+					fmt.Printf("Error Writing to account file:\n")
+				}
 			}
 		}
 

@@ -4,6 +4,7 @@ Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
@@ -99,7 +100,7 @@ var categoriesCmd = &cobra.Command{
 			if len(t) > 1 {
 				// Ensure there is a captured group.
 				category := strings.TrimSpace(t[2])
-				categories = append(categories, fmt.Sprintf("\"%s\"", category))
+				categories = append(categories, category)
 			}
 		}
 
@@ -153,7 +154,7 @@ var categoriesCmd = &cobra.Command{
 						// Remove double quotes
 						category = strings.ReplaceAll(category, "\"", "")
 						// Add category to the list
-						categories = append(categories, fmt.Sprintf("\"%s\"", category))
+						categories = append(categories, category)
 					}
 				}
 			}
@@ -161,11 +162,20 @@ var categoriesCmd = &cobra.Command{
 
 		// Sort and dedupe category list
 		outputCategoryList := sortAndDedupStrings(categories)
-		// Write categories to the file
-		for _, item := range outputCategoryList {
-			_, err := categoryFile.WriteString(item + "\n")
+		switch strings.ToUpper(outputFormat) {
+		case "JSON":
+			jsonData, err := json.MarshalIndent(outputCategoryList, "", "  ")
 			if err != nil {
-				fmt.Printf("Error Writing to category file:\n")
+				fmt.Printf("Error marshaling JSON: %v\n", err)
+				return
+			}
+			categoryFile.Write(jsonData)
+		default:
+			for _, item := range outputCategoryList {
+				_, err := categoryFile.WriteString(fmt.Sprintf("\"%s\"\n", item))
+				if err != nil {
+					fmt.Printf("Error Writing to category file:\n")
+				}
 			}
 		}
 
