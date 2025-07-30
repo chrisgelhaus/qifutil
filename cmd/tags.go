@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"regexp"
@@ -15,6 +16,12 @@ import (
 
 // tagsCmd represents the tags command
 var tagsOutputFile string
+
+type tagList struct {
+	XMLName xml.Name `xml:"tags"`
+	Tags    []string `xml:"tag"`
+}
+
 var tagsCmd = &cobra.Command{
 	Use:   "tags",
 	Short: "Extract tags from a QIF file",
@@ -165,6 +172,14 @@ var tagsCmd = &cobra.Command{
 				return
 			}
 			tagFile.Write(jsonData)
+		case "XML":
+			xmlData, err := xml.MarshalIndent(tagList{Tags: outputTagList}, "", "  ")
+			if err != nil {
+				fmt.Printf("Error marshaling XML: %v\n", err)
+				return
+			}
+			tagFile.Write([]byte(xml.Header))
+			tagFile.Write(xmlData)
 		default:
 			for _, item := range outputTagList {
 				_, err := tagFile.WriteString(fmt.Sprintf("\"%s\"\n", item))
@@ -192,5 +207,5 @@ func init() {
 	// tagsCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	tagsCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
 	tagsCmd.Flags().StringVarP(&tagsOutputFile, "outputFile", "o", "tags.csv", "Output file for tag names")
-	tagsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, etc.). Currently only CSV is supported.")
+	tagsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, XML).")
 }

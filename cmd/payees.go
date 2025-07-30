@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"regexp"
@@ -15,6 +16,12 @@ import (
 
 // payeesCmd represents the payees command
 var payeeOutputFile string
+
+type payeeList struct {
+	XMLName xml.Name `xml:"payees"`
+	Payees  []string `xml:"payee"`
+}
+
 var payeesCmd = &cobra.Command{
 	Use:   "payees",
 	Short: "Extract payees from a QIF file",
@@ -109,6 +116,14 @@ var payeesCmd = &cobra.Command{
 				return
 			}
 			payeeFile.Write(jsonData)
+		case "XML":
+			xmlData, err := xml.MarshalIndent(payeeList{Payees: outputPayeeList}, "", "  ")
+			if err != nil {
+				fmt.Printf("Error marshaling XML: %v\n", err)
+				return
+			}
+			payeeFile.Write([]byte(xml.Header))
+			payeeFile.Write(xmlData)
 		default:
 			for _, item := range outputPayeeList {
 				_, err := payeeFile.WriteString(fmt.Sprintf("\"%s\"\n", item))
@@ -137,5 +152,5 @@ func init() {
 	// payeesCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	payeesCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
 	payeesCmd.Flags().StringVarP(&payeeOutputFile, "outputFile", "o", "payees.csv", "Output file for payee names")
-	payeesCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, etc.). Currently only CSV is supported.")
+	payeesCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, XML).")
 }

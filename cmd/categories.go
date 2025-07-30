@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"regexp"
@@ -15,6 +16,12 @@ import (
 
 // categoriesCmd represents the categories command
 var categoryOutputFile string
+
+type categoryList struct {
+	XMLName    xml.Name `xml:"categories"`
+	Categories []string `xml:"category"`
+}
+
 var categoriesCmd = &cobra.Command{
 	Use:   "categories",
 	Short: "Extract categories from a QIF file",
@@ -170,6 +177,14 @@ var categoriesCmd = &cobra.Command{
 				return
 			}
 			categoryFile.Write(jsonData)
+		case "XML":
+			xmlData, err := xml.MarshalIndent(categoryList{Categories: outputCategoryList}, "", "  ")
+			if err != nil {
+				fmt.Printf("Error marshaling XML: %v\n", err)
+				return
+			}
+			categoryFile.Write([]byte(xml.Header))
+			categoryFile.Write(xmlData)
 		default:
 			for _, item := range outputCategoryList {
 				_, err := categoryFile.WriteString(fmt.Sprintf("\"%s\"\n", item))
@@ -198,7 +213,7 @@ func init() {
 	// categoriesCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	categoriesCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
 	categoriesCmd.Flags().StringVarP(&categoryOutputFile, "outputFile", "o", "categories.csv", "Output file for category names")
-	categoriesCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, etc.). Currently only CSV is supported.")
+	categoriesCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, XML).")
 }
 
 func splitCategoryAndTag(originalCategoryValue string) (category string, tag string) {
