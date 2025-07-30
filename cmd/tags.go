@@ -4,6 +4,7 @@ Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
@@ -98,7 +99,7 @@ var tagsCmd = &cobra.Command{
 				// Ensure there is a captured group.
 				tag := strings.TrimSpace(t[2])
 				if tag != "" {
-					tags = append(tags, fmt.Sprintf("\"%s\"", tag))
+					tags = append(tags, tag)
 				}
 			}
 		}
@@ -147,7 +148,7 @@ var tagsCmd = &cobra.Command{
 						// Remove double quotes
 						tag = strings.ReplaceAll(tag, "\"", "")
 						// Add tag to the list
-						tags = append(tags, fmt.Sprintf("\"%s\"", tag))
+						tags = append(tags, tag)
 					}
 				}
 			}
@@ -156,10 +157,20 @@ var tagsCmd = &cobra.Command{
 		// Sort and dedupe tag list
 		outputTagList := sortAndDedupStrings(tags)
 		// Write tags to the file
-		for _, item := range outputTagList {
-			_, err := tagFile.WriteString(item + "\n")
+		switch strings.ToUpper(outputFormat) {
+		case "JSON":
+			jsonData, err := json.MarshalIndent(outputTagList, "", "  ")
 			if err != nil {
-				fmt.Printf("Error Writing to tag file:\n")
+				fmt.Printf("Error marshaling JSON: %v\n", err)
+				return
+			}
+			tagFile.Write(jsonData)
+		default:
+			for _, item := range outputTagList {
+				_, err := tagFile.WriteString(fmt.Sprintf("\"%s\"\n", item))
+				if err != nil {
+					fmt.Printf("Error Writing to tag file:\n")
+				}
 			}
 		}
 
