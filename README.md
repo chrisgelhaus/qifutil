@@ -97,9 +97,85 @@ qifutil export transactions --inputFile "AllAccounts.QIF" --outputPath "C:\expor
 ```
 Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`).
 
+## Testing
+
+QIFUTIL includes a comprehensive test suite to ensure reliability and correctness. The test framework consists of:
+
+### Test Structure
+
+```
+test/
+├── helper.go           # Test utilities and helpers
+└── testdata/          # Sample data files for testing
+    ├── sample.qif     # Sample QIF file
+    └── categories.csv # Sample mapping file
+```
+
+### Running Tests
+
+Run all tests:
+```sh
+go test ./...
+```
+
+Run specific package tests with verbose output:
+```sh
+# Test command implementations
+go test -v ./cmd
+
+# Test utility functions
+go test -v ./pkg/utils
+```
+
+Run a specific test:
+```sh
+go test -v ./cmd -run TestTransactionsCmd/account_filtering
+```
+
+### Writing Tests
+
+The test framework provides helper functions for common testing tasks:
+
+```go
+func TestYourFeature(t *testing.T) {
+    helper := test.NewHelper(t)
+    
+    // Create temporary test directory
+    tempDir := helper.CreateTempDir()
+    
+    // Copy test data
+    helper.CopyTestData("sample.qif", filepath.Join(tempDir, "input.qif"))
+    
+    // Capture command output
+    output := helper.CaptureOutput(func() {
+        // Run your command
+    })
+    
+    // Verify results
+    helper.AssertFileExists("expected.csv")
+    helper.AssertFileContains("output.csv", "expected content")
+    helper.AssertOutputContains(output, "success message")
+}
+```
+
+### Test Coverage
+
+The test suite covers:
+- Basic command functionality
+- Account filtering
+- Date range filtering
+- Multiple output formats (CSV, JSON, XML)
+- Error cases and edge conditions
+- Utility functions
+
 ## Contributing
 
-Contributions are welcome! Please fork the repository and submit a pull request with your changes.
+Contributions are welcome! Please fork the repository and submit a pull request with your changes. Make sure to:
+
+1. Add tests for any new functionality
+2. Update documentation as needed
+3. Follow the existing code style
+4. Verify all tests pass before submitting
 
 ## License
 

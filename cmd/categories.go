@@ -217,6 +217,7 @@ func init() {
 }
 
 func splitCategoryAndTag(originalCategoryValue string) (category string, tag string) {
+	// TODO: Migrate to use utils.SplitCategoryAndTag
 	// If the category has a tag, split it out
 	if strings.Contains(originalCategoryValue, "/") {
 		// split the category and tag into separate strings and return the category

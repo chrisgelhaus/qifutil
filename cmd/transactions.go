@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"qifutil/pkg/utils"
+
 	"github.com/spf13/cobra"
 )
 
@@ -306,8 +308,18 @@ MAPPING FILES:
 			fileIndex := 1
 			count := 0
 			var records []TransactionRecord
+
+			// Determine file extension based on output format
+			ext := ".csv"
+			switch strings.ToUpper(outputFormat) {
+			case "JSON":
+				ext = ".json"
+			case "XML":
+				ext = ".xml"
+			}
+
 			// Create unique output file per Account
-			outputFileName := fmt.Sprintf("%s_%d.csv", accountName, fileIndex)
+			outputFileName := fmt.Sprintf("%s_%d%s", accountName, fileIndex, ext)
 			fmt.Printf("\nProcessing %s (File %d)\n", accountName, fileIndex)
 
 			fullPath := outputPath + outputFileName
@@ -365,7 +377,7 @@ MAPPING FILES:
 					transactionMemo := strings.TrimSpace(t[18])
 
 					// Split the category and tag
-					category, tag := splitCategoryAndTag(t[20])
+					category, tag := utils.SplitCategoryAndTag(t[20])
 
 					// Trim whitespace
 					category = strings.TrimSpace(category)
@@ -409,16 +421,28 @@ MAPPING FILES:
 						}
 					}
 
-					// Surround output values with double quotes to ensure they are treated as strings
-					// Write the transaction to the output file
+					record := TransactionRecord{
+						Date:              fullDate,
+						Merchant:          payee,
+						Category:          category,
+						Account:           outputAccountName,
+						OriginalStatement: payee,
+						Notes:             transactionMemo,
+						Amount:            amount1,
+						Tags:              tag,
+					}
 
-					// This output is compatiple with the Monarch CSV Importer
-					//_, err := outputFile.WriteString("\"" + fullDate + "\",\"" + payee + "\",\"" + category + "\",\"" + outputAccountName + "\",\"" + payee + "\",\"" + transactionMemo + "\",\"" + amount1 + "\",\"" + tag + "\"\n")
-					line := "\"" + fullDate + "\",\"" + payee + "\",\"" + category + "\",\"" + outputAccountName + "\",\"" + payee + "\",\"" + transactionMemo + "\",\"" + amount1 + "\",\"" + tag + "\"\n"
-					if err := writeTransaction(outputFile, line); err != nil {
-						outputFile.Close()
-						fmt.Printf("failed to write transaction: %v\n", err)
-						return
+					if strings.ToUpper(outputFormat) == "JSON" {
+						records = append(records, record)
+					} else {
+						line := fmt.Sprintf("\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n",
+							record.Date, record.Merchant, record.Category, record.Account,
+							record.OriginalStatement, record.Notes, record.Amount, record.Tags)
+						if err := writeTransaction(outputFile, line); err != nil {
+							outputFile.Close()
+							fmt.Printf("failed to write transaction: %v\n", err)
+							return
+						}
 					}
 					count++
 					if maxRecordsPerFile != 0 && count%maxRecordsPerFile == 0 {
