@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -17,42 +18,139 @@ var categoryMappingFile string
 var accountMappingFile string
 var payeeMappingFile string
 var tagMappingFile string
+var selectedAccounts string
 var outputFields string
 var outputPath string
+var startDate string
+var endDate string
 var addTagForImport bool = false
 var maxRecordsPerFile int = 5000
 
 // transactionsCmd represents the transactions command
 var transactionsCmd = &cobra.Command{
 	Use:   "transactions",
-	Short: "Export transactions from a QIF file",
-	Long: `Export transactions from a QIF file.
-	Command takes a QIF file as input and exports transactions to CSV files.
-	
-	Optional mapping files can be used to map categories, payees, accounts and tags.
-	
-	Each account in the QIF file will have its own CSV file.
-	
-	Accounts will be broken into multiple files if the transaction countis greater than the recordsPerFile value.
-	
-	Valid values for outputFields are:
-		Date,
-		Amount1,
-		Amount2,
-		Memo
-		Cleared,
-		Number,
-		Payee,
-		Category,
-		Tags`,
+	Short: "Export transactions from a QIF file to CSV format",
+	Long: `Export transactions from a QIF file to CSV format for analysis or importing into other software.
+
+DESCRIPTION:
+  Reads transactions from a Quicken (QIF) file and exports them to CSV files.
+  Each account's transactions are exported to separate CSV files.
+  Large accounts are automatically split into multiple files for easier handling.
+
+COMMON USES:
+  1. Export recent transactions:
+     qifutil export transactions -i data.qif -o ./export/ --startDate 2023-01-01
+
+  2. Export specific accounts:
+     qifutil export transactions -i data.qif -o ./export/ \
+       --accounts "Checking,Credit Card"
+
+  3. Export with mappings:
+     qifutil export transactions -i data.qif -o ./export/ \
+       -c categories.csv -p payees.csv
+
+TIPS:
+  - Use list-accounts command first to see available account names
+  - Date filters accept YYYY-MM-DD format
+  - Mapping files help standardize categories and payees
+  - Set recordsPerFile=0 to keep all transactions in one file
+
+OPTIONS:
+  --inputFile          Required. Path to the QIF file to process
+  --outputPath         Required. Directory where CSV files will be created
+  --accounts           Optional. Comma-separated list of accounts to process
+  --categoryMapFile    Optional. CSV file mapping source to target categories
+  --accountMapFile     Optional. CSV file mapping source to target account names
+  --payeeMapFile       Optional. CSV file mapping source to target payee names
+  --tagMapFile         Optional. CSV file mapping source to target tags
+  --maxRecordsPerFile  Optional. Maximum transactions per output file (default: 5000)
+  --addTagForImport    Optional. Add QIFIMPORT tag to all transactions
+
+OUTPUT FORMAT:
+  The exported CSV files will contain the following columns:
+    - Date (YYYY-MM-DD)
+    - Merchant (Payee)
+    - Category
+    - Account
+    - Original Statement
+    - Notes (Memo)
+    - Amount
+    - Tags
+
+MAPPING FILES:
+  Mapping files should be CSV format with two columns:
+  "source","target"
+  
+  Example category mapping:
+  "Groceries","Food:Groceries"
+  "Gas","Transportation:Fuel"`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		if inputFile == "" {
 			fmt.Println("Error: Missing required flag --inputFile")
 			os.Exit(1)
 		}
+
+		// Validate selected accounts format if provided
+		if selectedAccounts != "" {
+			accounts := strings.Split(selectedAccounts, ",")
+			for _, account := range accounts {
+				if strings.TrimSpace(account) == "" {
+					fmt.Println("Error: Invalid account name in --accounts flag")
+					os.Exit(1)
+				}
+			}
+		}
+
+		// Validate date format if provided
+		dateFormat := "2006-01-02"
+		if startDate != "" {
+			if _, err := time.Parse(dateFormat, startDate); err != nil {
+				fmt.Println("Error: Invalid start date format. Use YYYY-MM-DD")
+				os.Exit(1)
+			}
+		}
+		if endDate != "" {
+			if _, err := time.Parse(dateFormat, endDate); err != nil {
+				fmt.Println("Error: Invalid end date format. Use YYYY-MM-DD")
+				os.Exit(1)
+			}
+		}
+		// Validate date range if both dates are provided
+		if startDate != "" && endDate != "" {
+			start, _ := time.Parse(dateFormat, startDate)
+			end, _ := time.Parse(dateFormat, endDate)
+			if end.Before(start) {
+				fmt.Println("Error: End date cannot be before start date")
+				os.Exit(1)
+			}
+		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Begin Export Transactions")
+		fmt.Println("Starting transaction export...")
+
+		// Validate output path
+		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+			fmt.Printf("Creating output directory: %s\n", outputPath)
+			if err := os.MkdirAll(outputPath, 0755); err != nil {
+				fmt.Printf("Error creating output directory: %v\n", err)
+				os.Exit(1)
+			}
+		}
+
+		// Validate input file exists and is readable
+		if _, err := os.Stat(inputFile); os.IsNotExist(err) {
+			fmt.Printf("Error: Input file not found: %s\n", inputFile)
+			os.Exit(1)
+		}
+
+		// Process the selected accounts into a list
+		var selectedAccountList []string
+		if selectedAccounts != "" {
+			selectedAccountList = strings.Split(selectedAccounts, ",")
+			for i := range selectedAccountList {
+				selectedAccountList[i] = strings.TrimSpace(selectedAccountList[i])
+			}
+		}
 
 		// Output CSV Header
 		var transactionRegexString string = `D(?<month>\d{1,2})\/(\s?(?<day>\d{1,2}))'(?<year>\d{2})[\r\n]+(U(?<amount1>.*?)[\r\n]+)(T(?<amount2>.*?)[\r\n]+)(C(?<cleared>.*?)[\r\n]+)((N(?<number>.*?)[\r\n]+)?)(P(?<payee>.*?)[\r\n]+)((M(?<memo>.*?)[\r\n]+)?)(L(?<category>.*?)[\r\n]+)`
@@ -152,10 +250,25 @@ var transactionsCmd = &cobra.Command{
 
 		// loop over each account block and Find all transaction matches
 		for _, accountBlock := range accountBlocks {
-
-			// Extract the account name from the matched block and map it using the account mapping if available.
-			var outputAccountName string
+			// Extract the account name from the matched block
 			accountName := inputContent[accountBlock[2]:accountBlock[3]]
+
+			// If specific accounts are selected, skip accounts that aren't in the list
+			if len(selectedAccountList) > 0 {
+				accountFound := false
+				for _, selectedAccount := range selectedAccountList {
+					if accountName == selectedAccount {
+						accountFound = true
+						break
+					}
+				}
+				if !accountFound {
+					continue
+				}
+			}
+
+			// Map the account name using the account mapping if available
+			var outputAccountName string
 			if len(accountMapping[accountName]) > 0 {
 				outputAccountName = accountMapping[accountName]
 			} else {
@@ -177,9 +290,16 @@ var transactionsCmd = &cobra.Command{
 			count := 0
 			// Create unique output file per Account
 			outputFileName := fmt.Sprintf("%s_%d.csv", accountName, fileIndex)
-			outputFile, err := os.Create(outputPath + outputFileName)
+			fmt.Printf("\nProcessing %s (File %d)\n", accountName, fileIndex)
+
+			fullPath := outputPath + outputFileName
+			if _, err := os.Stat(fullPath); err == nil {
+				fmt.Printf("Warning: Overwriting existing file: %s\n", outputFileName)
+			}
+
+			outputFile, err := os.Create(fullPath)
 			if err != nil {
-				fmt.Println("Error creating file:", err)
+				fmt.Printf("Error creating file %s: %v\n", outputFileName, err)
 				return
 			}
 			if err := writeHeader(outputFile, outputCSVHeader); err != nil {
@@ -252,6 +372,21 @@ var transactionsCmd = &cobra.Command{
 					fullDay := day[len(day)-2:]
 					fullDate := fullYear + "-" + fullMonth + "-" + fullDay
 
+					// Check if the transaction date is within the specified range
+					transDate, _ := time.Parse("2006-01-02", fullDate)
+					if startDate != "" {
+						startDateTime, _ := time.Parse("2006-01-02", startDate)
+						if transDate.Before(startDateTime) {
+							continue
+						}
+					}
+					if endDate != "" {
+						endDateTime, _ := time.Parse("2006-01-02", endDate)
+						if transDate.After(endDateTime) {
+							continue
+						}
+					}
+
 					// Surround output values with double quotes to ensure they are treated as strings
 					// Write the transaction to the output file
 
@@ -286,6 +421,27 @@ var transactionsCmd = &cobra.Command{
 			outputFile.Close()
 		}
 
+		// Print summary
+		fmt.Println("\nExport Summary:")
+		fmt.Printf("Input file: %s\n", inputFile)
+		if startDate != "" || endDate != "" {
+			start := "earliest"
+			if startDate != "" {
+				start = startDate
+			}
+			end := "latest"
+			if endDate != "" {
+				end = endDate
+			}
+			fmt.Printf("Date range: %s to %s\n", start, end)
+		}
+		if len(selectedAccountList) > 0 {
+			fmt.Printf("Processed accounts: %s\n", strings.Join(selectedAccountList, ", "))
+		} else {
+			fmt.Println("Processed all accounts")
+		}
+		fmt.Printf("Output directory: %s\n", outputPath)
+		fmt.Println("\nExport completed successfully!")
 	},
 }
 
@@ -304,9 +460,12 @@ func init() {
 	transactionsCmd.Flags().StringVarP(&categoryMappingFile, "categoryMapFile", "c", "", "Supplied mapping file for categories. Optional.")
 	transactionsCmd.Flags().StringVarP(&payeeMappingFile, "payeeMapFile", "p", "", "Supplied mapping file for payees. Optional.")
 	transactionsCmd.Flags().StringVarP(&tagMappingFile, "tagMapFile", "t", "", "Supplied mapping file for tags. Optional.")
+	transactionsCmd.Flags().StringVarP(&selectedAccounts, "accounts", "", "", "Optional. Comma separated list of accounts to process. If not specified, all accounts will be processed.")
 	transactionsCmd.Flags().StringVarP(&outputPath, "outputPath", "", "", "Output path for transaction file")
 	transactionsCmd.Flags().IntVarP(&maxRecordsPerFile, "recordsPerFile", "r", 5000, "Optional. Maximum number of records per CSV file. Default is 5000. If set to 0, all records will be written to a single file.")
 	transactionsCmd.Flags().BoolVarP(&addTagForImport, "addTagForImport", "", true, "Add a custom tag to the transaction for import purposes")
+	transactionsCmd.Flags().StringVar(&startDate, "startDate", "", "Optional. Filter transactions from this date (YYYY-MM-DD)")
+	transactionsCmd.Flags().StringVar(&endDate, "endDate", "", "Optional. Filter transactions until this date (YYYY-MM-DD)")
 }
 
 func loadMapping(filePath string) (map[string]string, error) {
