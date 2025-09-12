@@ -4,6 +4,8 @@ Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
 package cmd
 
 import (
+	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"regexp"
@@ -14,6 +16,12 @@ import (
 
 // tagsCmd represents the tags command
 var tagsOutputFile string
+
+type tagList struct {
+	XMLName xml.Name `xml:"tags"`
+	Tags    []string `xml:"tag"`
+}
+
 var tagsCmd = &cobra.Command{
 	Use:   "tags",
 	Short: "Extract tags from a QIF file",
@@ -70,12 +78,13 @@ var tagsCmd = &cobra.Command{
 		nextTypePattern := `(?mi)^\s*!Type:.*$`
 		nextTypeRe := regexp.MustCompile(nextTypePattern)
 		nextLoc := nextTypeRe.FindStringIndex(restOfText)
-		fmt.Printf("Next type found at:%d\n", nextLoc[1])
 		var endPos int
 		if nextLoc != nil {
+			fmt.Printf("Next type found at:%d\n", nextLoc[1])
 			// Found another Type line.
 			endPos = loc[1] + nextLoc[0]
 		} else {
+			fmt.Printf("No next type block found.\n")
 			// No other Type found
 			endPos = len(inputContent)
 		}
@@ -97,7 +106,7 @@ var tagsCmd = &cobra.Command{
 				// Ensure there is a captured group.
 				tag := strings.TrimSpace(t[2])
 				if tag != "" {
-					tags = append(tags, fmt.Sprintf("\"%s\"", tag))
+					tags = append(tags, tag)
 				}
 			}
 		}
@@ -146,7 +155,7 @@ var tagsCmd = &cobra.Command{
 						// Remove double quotes
 						tag = strings.ReplaceAll(tag, "\"", "")
 						// Add tag to the list
-						tags = append(tags, fmt.Sprintf("\"%s\"", tag))
+						tags = append(tags, tag)
 					}
 				}
 			}
@@ -155,10 +164,28 @@ var tagsCmd = &cobra.Command{
 		// Sort and dedupe tag list
 		outputTagList := sortAndDedupStrings(tags)
 		// Write tags to the file
-		for _, item := range outputTagList {
-			_, err := tagFile.WriteString(item + "\n")
+		switch strings.ToUpper(outputFormat) {
+		case "JSON":
+			jsonData, err := json.MarshalIndent(outputTagList, "", "  ")
 			if err != nil {
-				fmt.Printf("Error Writing to tag file:\n")
+				fmt.Printf("Error marshaling JSON: %v\n", err)
+				return
+			}
+			tagFile.Write(jsonData)
+		case "XML":
+			xmlData, err := xml.MarshalIndent(tagList{Tags: outputTagList}, "", "  ")
+			if err != nil {
+				fmt.Printf("Error marshaling XML: %v\n", err)
+				return
+			}
+			tagFile.Write([]byte(xml.Header))
+			tagFile.Write(xmlData)
+		default:
+			for _, item := range outputTagList {
+				_, err := tagFile.WriteString(fmt.Sprintf("\"%s\"\n", item))
+				if err != nil {
+					fmt.Printf("Error Writing to tag file:\n")
+				}
 			}
 		}
 
@@ -180,5 +207,5 @@ func init() {
 	// tagsCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	tagsCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
 	tagsCmd.Flags().StringVarP(&tagsOutputFile, "outputFile", "o", "tags.csv", "Output file for tag names")
-	tagsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, etc.). Currently only CSV is supported.")
+	tagsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, XML).")
 }

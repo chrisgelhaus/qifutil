@@ -4,6 +4,8 @@ Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
 package cmd
 
 import (
+	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"regexp"
@@ -14,6 +16,12 @@ import (
 
 // categoriesCmd represents the categories command
 var categoryOutputFile string
+
+type categoryList struct {
+	XMLName    xml.Name `xml:"categories"`
+	Categories []string `xml:"category"`
+}
+
 var categoriesCmd = &cobra.Command{
 	Use:   "categories",
 	Short: "Extract categories from a QIF file",
@@ -72,12 +80,13 @@ var categoriesCmd = &cobra.Command{
 		nextTypePattern := `(?mi)^\s*!Type:.*$`
 		nextTypeRe := regexp.MustCompile(nextTypePattern)
 		nextLoc := nextTypeRe.FindStringIndex(restOfText)
-		fmt.Printf("Next type found at:%d\n", nextLoc[1])
 		var endPos int
 		if nextLoc != nil {
+			fmt.Printf("Next type found at:%d\n", nextLoc[1])
 			// Found another Type line.
 			endPos = loc[1] + nextLoc[0]
 		} else {
+			fmt.Printf("No next type block found.\n")
 			// No other Type found
 			endPos = len(inputContent)
 		}
@@ -98,7 +107,7 @@ var categoriesCmd = &cobra.Command{
 			if len(t) > 1 {
 				// Ensure there is a captured group.
 				category := strings.TrimSpace(t[2])
-				categories = append(categories, fmt.Sprintf("\"%s\"", category))
+				categories = append(categories, category)
 			}
 		}
 
@@ -152,7 +161,7 @@ var categoriesCmd = &cobra.Command{
 						// Remove double quotes
 						category = strings.ReplaceAll(category, "\"", "")
 						// Add category to the list
-						categories = append(categories, fmt.Sprintf("\"%s\"", category))
+						categories = append(categories, category)
 					}
 				}
 			}
@@ -160,11 +169,28 @@ var categoriesCmd = &cobra.Command{
 
 		// Sort and dedupe category list
 		outputCategoryList := sortAndDedupStrings(categories)
-		// Write categories to the file
-		for _, item := range outputCategoryList {
-			_, err := categoryFile.WriteString(item + "\n")
+		switch strings.ToUpper(outputFormat) {
+		case "JSON":
+			jsonData, err := json.MarshalIndent(outputCategoryList, "", "  ")
 			if err != nil {
-				fmt.Printf("Error Writing to category file:\n")
+				fmt.Printf("Error marshaling JSON: %v\n", err)
+				return
+			}
+			categoryFile.Write(jsonData)
+		case "XML":
+			xmlData, err := xml.MarshalIndent(categoryList{Categories: outputCategoryList}, "", "  ")
+			if err != nil {
+				fmt.Printf("Error marshaling XML: %v\n", err)
+				return
+			}
+			categoryFile.Write([]byte(xml.Header))
+			categoryFile.Write(xmlData)
+		default:
+			for _, item := range outputCategoryList {
+				_, err := categoryFile.WriteString(fmt.Sprintf("\"%s\"\n", item))
+				if err != nil {
+					fmt.Printf("Error Writing to category file:\n")
+				}
 			}
 		}
 
@@ -187,7 +213,7 @@ func init() {
 	// categoriesCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	categoriesCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
 	categoriesCmd.Flags().StringVarP(&categoryOutputFile, "outputFile", "o", "categories.csv", "Output file for category names")
-	categoriesCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, etc.). Currently only CSV is supported.")
+	categoriesCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, XML).")
 }
 
 func splitCategoryAndTag(originalCategoryValue string) (category string, tag string) {

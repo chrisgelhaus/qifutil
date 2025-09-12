@@ -5,6 +5,8 @@ package cmd
 
 import (
 	"encoding/csv"
+	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"regexp"
@@ -25,6 +27,21 @@ var startDate string
 var endDate string
 var addTagForImport bool = false
 var maxRecordsPerFile int = 5000
+
+type TransactionRecord struct {
+	Date              string `json:"date" xml:"date"`
+	Merchant          string `json:"merchant" xml:"merchant"`
+	Category          string `json:"category" xml:"category"`
+	Account           string `json:"account" xml:"account"`
+	OriginalStatement string `json:"original_statement" xml:"original_statement"`
+	Notes             string `json:"notes" xml:"notes"`
+	Amount            string `json:"amount" xml:"amount"`
+	Tags              string `json:"tags" xml:"tags"`
+}
+type transactionList struct {
+	XMLName      xml.Name            `xml:"transactions"`
+	Transactions []TransactionRecord `xml:"transaction"`
+}
 
 // transactionsCmd represents the transactions command
 var transactionsCmd = &cobra.Command{
@@ -288,6 +305,7 @@ MAPPING FILES:
 
 			fileIndex := 1
 			count := 0
+			var records []TransactionRecord
 			// Create unique output file per Account
 			outputFileName := fmt.Sprintf("%s_%d.csv", accountName, fileIndex)
 			fmt.Printf("\nProcessing %s (File %d)\n", accountName, fileIndex)
@@ -302,10 +320,15 @@ MAPPING FILES:
 				fmt.Printf("Error creating file %s: %v\n", outputFileName, err)
 				return
 			}
-			if err := writeHeader(outputFile, outputCSVHeader); err != nil {
-				outputFile.Close()
-				fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
-				return
+			if strings.ToUpper(outputFormat) == "XML" {
+				outputFile.WriteString(xml.Header)
+			}
+			if strings.ToUpper(outputFormat) == "CSV" {
+				if err := writeHeader(outputFile, outputCSVHeader); err != nil {
+					outputFile.Close()
+					fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
+					return
+				}
 			}
 
 			// Extract the text between the type lines
@@ -324,7 +347,6 @@ MAPPING FILES:
 			fmt.Printf("Number of transactions found: %d\n", len(transactions))
 
 			for _, t := range transactions {
-				// Check if there is a captured group and extract the content.
 				if len(t) > 1 {
 					month := strings.TrimSpace(t[1])
 					day := strings.TrimSpace(t[2])
@@ -399,24 +421,54 @@ MAPPING FILES:
 						return
 					}
 					count++
-					// Check batch size.
-					if count%maxRecordsPerFile == 0 {
+					if maxRecordsPerFile != 0 && count%maxRecordsPerFile == 0 {
+						if strings.ToUpper(outputFormat) == "JSON" {
+							jsonData, err := json.MarshalIndent(records, "", "  ")
+							if err == nil {
+								outputFile.Write(jsonData)
+							}
+							records = nil
+						} else if strings.ToUpper(outputFormat) == "XML" {
+							xmlData, err := xml.MarshalIndent(transactionList{Transactions: records}, "", "  ")
+							if err == nil {
+								outputFile.Write(xmlData)
+							}
+							records = nil
+						}
 						outputFile.Close()
 						fileIndex++
-						outputFileName = fmt.Sprintf("%s_%d.csv", accountName, fileIndex)
+						outputFileName = fmt.Sprintf("%s_%d%s", accountName, fileIndex, ext)
 						outputFile, err = os.Create(outputPath + outputFileName)
 						if err != nil {
 							fmt.Println("Error creating file:", err)
 							return
 						}
-						if err := writeHeader(outputFile, outputCSVHeader); err != nil {
-							outputFile.Close()
-							fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
-							return
+						if strings.ToUpper(outputFormat) == "XML" {
+							outputFile.WriteString(xml.Header)
+						}
+						if strings.ToUpper(outputFormat) == "CSV" {
+							if err := writeHeader(outputFile, outputCSVHeader); err != nil {
+								outputFile.Close()
+								fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
+								return
+							}
 						}
 					}
 
 				}
+			}
+			if strings.ToUpper(outputFormat) == "JSON" && len(records) > 0 {
+				jsonData, err := json.MarshalIndent(records, "", "  ")
+				if err == nil {
+					outputFile.Write(jsonData)
+				}
+				records = nil
+			} else if strings.ToUpper(outputFormat) == "XML" && len(records) > 0 {
+				xmlData, err := xml.MarshalIndent(transactionList{Transactions: records}, "", "  ")
+				if err == nil {
+					outputFile.Write(xmlData)
+				}
+				records = nil
 			}
 			outputFile.Close()
 		}
@@ -455,7 +507,7 @@ func init() {
 	// is called directly, e.g.:
 	transactionsCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
 	transactionsCmd.Flags().StringVarP(&outputFields, "outputFields", "", "", "Comma Separated list of fields to export from the QIF File.")
-	transactionsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, etc.). Currently only CSV is supported.")
+	transactionsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, XML).")
 	transactionsCmd.Flags().StringVarP(&accountMappingFile, "accountMapFile", "a", "", "Supplied mapping file for accounts. Optional.")
 	transactionsCmd.Flags().StringVarP(&categoryMappingFile, "categoryMapFile", "c", "", "Supplied mapping file for categories. Optional.")
 	transactionsCmd.Flags().StringVarP(&payeeMappingFile, "payeeMapFile", "p", "", "Supplied mapping file for payees. Optional.")
