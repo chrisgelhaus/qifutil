@@ -1,18 +1,61 @@
 # QIFUTIL
+
+## Quick Start Guide
+
+1. Download the latest `qifutil.exe` from the [releases page](https://github.com/chrisgelhaus/qifutil/releases)
+2. In Quicken, export your data:
+   - File -> Export -> QIF File
+   - Select the accounts you want to export
+   - Save the file (e.g., as "MyData.QIF")
+
+3. Run the interactive wizard (recommended for new users):
+```sh
+qifutil wizard
+```
+The wizard will guide you through:
+- Selecting your input file (drag & drop supported)
+- Choosing where to save the exported files
+- Selecting specific accounts by number (e.g., "1,3,5")
+- Setting date ranges (optional)
+- Choosing output format
+
+4. Or use command-line options for more control:
+```sh
+# Basic conversion - creates CSV files for each account
+qifutil export transactions --inputFile "C:\Users\YourName\Downloads\MyData.QIF" --outputPath "C:\Users\YourName\Documents\Exported\"
+
+# Just see what accounts are in your file
+qifutil list accounts --inputFile "C:\Users\YourName\Downloads\MyData.QIF"
+```
+
+Need help? Type `qifutil --help` or see the detailed instructions below.
+
 ## Overview
 
 QIFUTIL is a utility for exporting financial data from Quicken in QIF format. This tool helps users to easily extract and manage their financial data for use in other applications or for backup purposes.
 
 ## Features
 
-- Export transactions from Quicken to QIF format
-- Support for multiple accounts with filtering
-- Date range filtering for transactions
-- Account statistics and analysis
-- List and explore available accounts
-- Easy-to-use command-line interface
-- Customizable export options
- - Supports CSV, JSON, and XML output formats
+- Interactive wizard for easy file conversion
+  - Simple drag & drop file selection
+  - Easy account selection by number (no typing long account names)
+  - Guided process for all options
+- Smart file handling
+  - Automatic file splitting for Monarch compatibility (5000 records per file)
+  - Preserves headers in split files
+  - Creates organized output with clear file naming
+- Export options
+  - CSV format (optimized for Monarch import)
+  - JSON format (for technical users)
+  - XML format (for system integration)
+- Flexible filtering
+  - Select specific accounts to export
+  - Filter by date range
+  - Apply category, account, and payee mappings
+- Analysis tools
+  - Account statistics and analysis
+  - List and explore available accounts
+  - Transaction summaries
 
 ## Usage
 
@@ -64,15 +107,35 @@ To get statistics about transactions in your accounts:
 qifutil account-stats --inputFile "AllAccounts.QIF"
 ```
 
-### Export Transactions List
-To export the transactions, use the following command:
+### Export Transactions
+For the easiest experience, use the interactive wizard:
+```sh
+qifutil wizard
+```
 
+Or use command-line options for more control:
 ```sh
 qifutil export transactions --inputFile "AllAccounts.QIF" --outputPath "C:\export\\"
 ```
 
 #### Advanced Export Options
 You can customize your transaction export with the following options:
+
+- `--recordsPerFile`: Maximum records per file (default: 5000 for Monarch compatibility)
+- `--accounts`: Comma-separated list of accounts to export (e.g., "Checking,Savings")
+- `--startDate`: Filter transactions from this date (YYYY-MM-DD)
+- `--endDate`: Filter transactions until this date (YYYY-MM-DD)
+- `--outputFormat`: Choose CSV (default), JSON, or XML
+- `--categoryMapFile`: Map categories using a CSV file
+- `--accountMapFile`: Map account names using a CSV file
+- `--payeeMapFile`: Map payee names using a CSV file
+- `--tagMapFile`: Map tags using a CSV file
+
+The tool automatically:
+- Splits large files into chunks of 5000 records for Monarch compatibility
+- Adds headers to each split file
+- Names files consistently with account and part number
+- Shows progress and record ranges for split files
 
 - Filter by accounts:
 ```sh

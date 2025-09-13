@@ -9,6 +9,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -48,8 +49,14 @@ type transactionList struct {
 // transactionsCmd represents the transactions command
 var transactionsCmd = &cobra.Command{
 	Use:   "transactions",
-	Short: "Export transactions from a QIF file to CSV format",
-	Long: `Export transactions from a QIF file to CSV format for analysis or importing into other software.
+	Short: "Convert your QIF file to CSV, JSON, or XML format",
+	Long: `Convert your Quicken (QIF) file into a format you can use in other programs.
+
+💡 First time user? Try our interactive guide:
+   qifutil wizard
+
+🔍 Want to see what accounts are in your file?
+   qifutil list accounts --inputFile "YourFile.QIF"
 
 DESCRIPTION:
   Reads transactions from a Quicken (QIF) file and exports them to CSV files.
@@ -147,13 +154,41 @@ MAPPING FILES:
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Starting transaction export...")
 
-		// Validate output path
-		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
-			fmt.Printf("Creating output directory: %s\n", outputPath)
-			if err := os.MkdirAll(outputPath, 0755); err != nil {
-				fmt.Printf("Error creating output directory: %v\n", err)
+		// Ensure we have a valid output path
+		if outputPath == "" {
+			fmt.Println("Error: No output path specified")
+			os.Exit(1)
+		}
+
+		// Clean and validate output path
+		outputPath = filepath.Clean(outputPath)
+		if !filepath.IsAbs(outputPath) {
+			var absErr error
+			outputPath, absErr = filepath.Abs(outputPath)
+			if absErr != nil {
+				fmt.Printf("Error with output path: %v\n", absErr)
 				os.Exit(1)
 			}
+		}
+
+		// Try to create the output directory
+		fmt.Printf("Creating output directory: %s\n", outputPath)
+		if mkdirErr := os.MkdirAll(outputPath, 0755); mkdirErr != nil {
+			fmt.Printf("Error creating output directory: %v\n", mkdirErr)
+			os.Exit(1)
+		}
+
+		// Save current directory and change to output directory
+		origDir, dirErr := os.Getwd()
+		if dirErr != nil {
+			fmt.Printf("Error getting current directory: %v\n", dirErr)
+			os.Exit(1)
+		}
+		defer os.Chdir(origDir) // Restore original directory when done
+
+		if chdirErr := os.Chdir(outputPath); chdirErr != nil {
+			fmt.Printf("Error changing to output directory: %v\n", chdirErr)
+			os.Exit(1)
 		}
 
 		// Validate input file exists and is readable
@@ -322,7 +357,7 @@ MAPPING FILES:
 			outputFileName := fmt.Sprintf("%s_%d%s", accountName, fileIndex, ext)
 			fmt.Printf("\nProcessing %s (File %d)\n", accountName, fileIndex)
 
-			fullPath := outputPath + outputFileName
+			fullPath := filepath.Join(outputPath, outputFileName)
 			if _, err := os.Stat(fullPath); err == nil {
 				fmt.Printf("Warning: Overwriting existing file: %s\n", outputFileName)
 			}
@@ -445,7 +480,9 @@ MAPPING FILES:
 						}
 					}
 					count++
+					// Check if we need to split the file
 					if maxRecordsPerFile != 0 && count%maxRecordsPerFile == 0 {
+						// Close current file
 						if strings.ToUpper(outputFormat) == "JSON" {
 							jsonData, err := json.MarshalIndent(records, "", "  ")
 							if err == nil {
@@ -460,13 +497,24 @@ MAPPING FILES:
 							records = nil
 						}
 						outputFile.Close()
+
+						// Start new file
 						fileIndex++
 						outputFileName = fmt.Sprintf("%s_%d%s", accountName, fileIndex, ext)
-						outputFile, err = os.Create(outputPath + outputFileName)
+						fullPath := filepath.Join(outputPath, outputFileName)
+						fmt.Printf("\nCreating split file for %s (File %d) - Records %d to %d\n",
+							accountName,
+							fileIndex,
+							(fileIndex-1)*maxRecordsPerFile+1,
+							fileIndex*maxRecordsPerFile)
+
+						outputFile, err = os.Create(fullPath)
 						if err != nil {
-							fmt.Println("Error creating file:", err)
+							fmt.Printf("Error creating split file %s: %v\n", outputFileName, err)
 							return
 						}
+
+						// Write appropriate headers for the new file
 						if strings.ToUpper(outputFormat) == "XML" {
 							outputFile.WriteString(xml.Header)
 						}
@@ -517,31 +565,29 @@ MAPPING FILES:
 			fmt.Println("Processed all accounts")
 		}
 		fmt.Printf("Output directory: %s\n", outputPath)
+		if maxRecordsPerFile > 0 {
+			fmt.Printf("Split files: %d records per file (for Monarch compatibility)\n", maxRecordsPerFile)
+		}
 		fmt.Println("\nExport completed successfully!")
 	},
 }
 
 func init() {
-	exportCmd.AddCommand(transactionsCmd)
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// transactionsCmd.PersistentFlags().String("foo", "", "A help for foo")
+	rootCmd.AddCommand(transactionsCmd)
 
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	transactionsCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
+	// Add command-specific flags
 	transactionsCmd.Flags().StringVarP(&outputFields, "outputFields", "", "", "Comma Separated list of fields to export from the QIF File.")
 	transactionsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, XML).")
 	transactionsCmd.Flags().StringVarP(&accountMappingFile, "accountMapFile", "a", "", "Supplied mapping file for accounts. Optional.")
 	transactionsCmd.Flags().StringVarP(&categoryMappingFile, "categoryMapFile", "c", "", "Supplied mapping file for categories. Optional.")
 	transactionsCmd.Flags().StringVarP(&payeeMappingFile, "payeeMapFile", "p", "", "Supplied mapping file for payees. Optional.")
 	transactionsCmd.Flags().StringVarP(&tagMappingFile, "tagMapFile", "t", "", "Supplied mapping file for tags. Optional.")
-	transactionsCmd.Flags().StringVarP(&selectedAccounts, "accounts", "", "", "Optional. Comma separated list of accounts to process. If not specified, all accounts will be processed.")
-	transactionsCmd.Flags().StringVarP(&outputPath, "outputPath", "", "", "Output path for transaction file")
 	transactionsCmd.Flags().IntVarP(&maxRecordsPerFile, "recordsPerFile", "r", 5000, "Optional. Maximum number of records per CSV file. Default is 5000. If set to 0, all records will be written to a single file.")
 	transactionsCmd.Flags().BoolVarP(&addTagForImport, "addTagForImport", "", true, "Add a custom tag to the transaction for import purposes")
-	transactionsCmd.Flags().StringVar(&startDate, "startDate", "", "Optional. Filter transactions from this date (YYYY-MM-DD)")
-	transactionsCmd.Flags().StringVar(&endDate, "endDate", "", "Optional. Filter transactions until this date (YYYY-MM-DD)")
+
+	// Mark the shared required flags as required for this command
+	transactionsCmd.MarkPersistentFlagRequired("inputFile")
+	transactionsCmd.MarkPersistentFlagRequired("outputPath")
 }
 
 func loadMapping(filePath string) (map[string]string, error) {
