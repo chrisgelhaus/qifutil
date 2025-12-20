@@ -1,5 +1,7 @@
 # QIFUTIL
 
+**Latest Update (v1.5.0+):** Export commands now correctly respect the `--outputPath` flag, ensuring all output files are created in your specified directory. Mapping files are fully integrated into the wizard for easy data transformation.
+
 ## Quick Start Guide
 
 1. Download the latest `qifutil.exe` from the [releases page](https://github.com/chrisgelhaus/qifutil/releases)
@@ -17,12 +19,16 @@ The wizard will guide you through:
 - Choosing where to save the exported files
 - Selecting specific accounts by number (e.g., "1,3,5")
 - Setting date ranges (optional)
-- Choosing output format
+- Choosing output format (CSV/JSON/XML)
+- Applying optional mapping files to standardize your data
 
 4. Or use command-line options for more control:
 ```sh
 # Basic conversion - creates CSV files for each account
-qifutil export transactions --inputFile "C:\Users\YourName\Downloads\MyData.QIF" --outputPath "C:\Users\YourName\Documents\Exported\"
+qifutil transactions --inputFile "C:\Users\YourName\Downloads\MyData.QIF" --outputPath "C:\Users\YourName\Documents\Exported\"
+
+# With account mapping file
+qifutil transactions --inputFile "MyData.QIF" --outputPath "export/" --accountMapFile "account_mappings.csv"
 
 # Just see what accounts are in your file
 qifutil list accounts --inputFile "C:\Users\YourName\Downloads\MyData.QIF"
@@ -40,18 +46,25 @@ QIFUTIL is a utility for exporting financial data from Quicken in QIF format. Th
   - Simple drag & drop file selection
   - Easy account selection by number (no typing long account names)
   - Guided process for all options
+  - Optional mapping files to standardize data
 - Smart file handling
   - Automatic file splitting for Monarch compatibility (5000 records per file)
   - Preserves headers in split files
   - Creates organized output with clear file naming
+  - All output respects `--outputPath` for organized exports
 - Export options
   - CSV format (optimized for Monarch import)
   - JSON format (for technical users)
   - XML format (for system integration)
+- Data transformation with mapping files
+  - Map categories to standardized names
+  - Rename payees for consistency
+  - Standardize account names
+  - Transform tag values
 - Flexible filtering
   - Select specific accounts to export
   - Filter by date range
-  - Apply category, account, and payee mappings
+  - Apply mappings to transform extracted data
 - Analysis tools
   - Account statistics and analysis
   - List and explore available accounts
@@ -115,7 +128,7 @@ qifutil wizard
 
 Or use command-line options for more control:
 ```sh
-qifutil export transactions --inputFile "AllAccounts.QIF" --outputPath "C:\export\\"
+qifutil transactions --inputFile "AllAccounts.QIF" --outputPath "C:\export\\"
 ```
 
 #### Advanced Export Options
@@ -159,6 +172,80 @@ qifutil export transactions --inputFile "AllAccounts.QIF" --outputPath "C:\expor
     --addTagForImport true
 ```
 Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`).
+
+## Mapping Files
+
+Mapping files allow you to transform and standardize your financial data during export. Each mapping file is a simple CSV with two columns: the source value and the target (replacement) value.
+
+### Creating Mapping Files
+
+Mapping files use CSV format with two columns (with quotes):
+```csv
+"source","target"
+"Whole Foods","Groceries"
+"Trader Joe's","Groceries"
+"Gas Station XYZ","Transportation:Fuel"
+```
+
+### Supported Mapping Types
+
+1. **Category Mapping** (`--categoryMapFile`)
+   - Maps category names extracted from QIF
+   - Useful for consolidating varied category names
+   - Example: Map "Groceries" and "Food" to a standard "Groceries" category
+
+2. **Payee Mapping** (`--payeeMapFile`)
+   - Maps merchant/payee names
+   - Useful for standardizing retailer names across transactions
+   - Example: Map "WHOLE FOODS MKT #1234" to "Whole Foods Market"
+
+3. **Account Mapping** (`--accountMapFile`)
+   - Maps account names to standardized names
+   - Useful for renaming accounts for compatibility with other systems
+   - Example: Map "USAA CHECKING XX5681" to "Primary Checking"
+
+4. **Tag Mapping** (`--tagMapFile`)
+   - Maps tag values extracted from categories
+   - QIF categories can include tags in `category/tag` format
+   - Example: Map "Work" to "Business:Work"
+
+### Using Mapping Files in the Wizard
+
+When you run `qifutil wizard`, you'll be prompted to optionally provide mapping files:
+```
+Would you like to apply mapping files to transform data? (y/n): y
+
+Category mapping file (drag and drop, or press Enter to skip): C:\mappings\categories.csv
+Payee mapping file (drag and drop, or press Enter to skip): C:\mappings\payees.csv
+Account mapping file (drag and drop, or press Enter to skip): C:\mappings\accounts.csv
+Tag mapping file (drag and drop, or press Enter to skip): C:\mappings\tags.csv
+```
+
+### Using Mapping Files from Command Line
+
+```sh
+# Apply category and payee mappings
+qifutil export transactions --inputFile "data.qif" --outputPath "export/" \
+    --categoryMapFile "mappings/categories.csv" \
+    --payeeMapFile "mappings/payees.csv"
+
+# Apply all mapping types
+qifutil export transactions --inputFile "data.qif" --outputPath "export/" \
+    --categoryMapFile "categories.csv" \
+    --payeeMapFile "payees.csv" \
+    --accountMapFile "accounts.csv" \
+    --tagMapFile "tags.csv"
+```
+
+### Mapping File Best Practices
+
+- Keep mapping files in the same directory or a dedicated `mappings/` folder
+- Use UTF-8 encoding for the CSV files
+- Include quotes around values, especially if they contain commas or special characters
+- Test mappings on a small subset first
+- Source values are case-sensitive (exact match required)
+- Unmapped values pass through unchanged
+- Comment your mappings with descriptive source names
 
 ## Testing
 
@@ -230,6 +317,39 @@ The test suite covers:
 - Multiple output formats (CSV, JSON, XML)
 - Error cases and edge conditions
 - Utility functions
+
+## Recent Improvements (v1.5.0+)
+
+### ✅ Fixed Export Command Output Paths
+**Issue:** Export commands (`accounts`, `categories`, `payees`, `tags`) were ignoring the `--outputPath` flag and creating files in the current working directory.
+
+**Solution:** All export commands now respect the `--outputPath` flag and create output files in the specified directory.
+
+**Impact:** Users can now organize all exports in a single directory using a common `--outputPath` parameter.
+
+```powershell
+# Output file is now created at: C:\export\accounts.csv
+qifutil export accounts --inputFile "data.qif" --outputPath "C:\export"
+```
+
+### ✅ Mapping Files Integration with Wizard
+**Enhancement:** The interactive wizard now supports mapping files for data transformation.
+
+**Features:**
+- Prompts for optional mapping files (categories, payees, accounts, tags)
+- Full drag-and-drop support
+- Automatic path handling and validation
+- Clear summary showing which mappings will be applied
+
+**How to Use:**
+```powershell
+qifutil wizard
+
+# When prompted:
+# Would you like to apply mapping files to transform data? (y/n): y
+# Category mapping file (drag and drop, or press Enter to skip): C:\mappings\categories.csv
+# ... etc ...
+```
 
 ## Contributing
 

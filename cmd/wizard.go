@@ -161,6 +161,85 @@ It will ask you questions and help you create the right command for your needs.`
 			outputFormat = "CSV"
 		}
 
+		// Ask about mapping files
+		var categoryMapFile, payeeMapFile, accountMapFile, tagMapFile string
+
+		fmt.Print("\nWould you like to apply mapping files to transform data? (y/n): ")
+		answer, _ = reader.ReadString('\n')
+		if strings.ToLower(strings.TrimSpace(answer)) == "y" {
+			fmt.Print("\nCategory mapping file (drag and drop, or press Enter to skip): ")
+			mapPath, _ := reader.ReadString('\n')
+			mapPath = strings.TrimSpace(mapPath)
+			mapPath = strings.TrimPrefix(mapPath, "& ")
+			mapPath = strings.Trim(mapPath, "'\"")
+			if mapPath != "" {
+				absMapPath := filepath.Clean(mapPath)
+				if !filepath.IsAbs(absMapPath) {
+					var err error
+					absMapPath, err = filepath.Abs(absMapPath)
+					if err == nil {
+						categoryMapFile = absMapPath
+					}
+				} else {
+					categoryMapFile = absMapPath
+				}
+			}
+
+			fmt.Print("Payee mapping file (drag and drop, or press Enter to skip): ")
+			mapPath, _ = reader.ReadString('\n')
+			mapPath = strings.TrimSpace(mapPath)
+			mapPath = strings.TrimPrefix(mapPath, "& ")
+			mapPath = strings.Trim(mapPath, "'\"")
+			if mapPath != "" {
+				absMapPath := filepath.Clean(mapPath)
+				if !filepath.IsAbs(absMapPath) {
+					var err error
+					absMapPath, err = filepath.Abs(absMapPath)
+					if err == nil {
+						payeeMapFile = absMapPath
+					}
+				} else {
+					payeeMapFile = absMapPath
+				}
+			}
+
+			fmt.Print("Account mapping file (drag and drop, or press Enter to skip): ")
+			mapPath, _ = reader.ReadString('\n')
+			mapPath = strings.TrimSpace(mapPath)
+			mapPath = strings.TrimPrefix(mapPath, "& ")
+			mapPath = strings.Trim(mapPath, "'\"")
+			if mapPath != "" {
+				absMapPath := filepath.Clean(mapPath)
+				if !filepath.IsAbs(absMapPath) {
+					var err error
+					absMapPath, err = filepath.Abs(absMapPath)
+					if err == nil {
+						accountMapFile = absMapPath
+					}
+				} else {
+					accountMapFile = absMapPath
+				}
+			}
+
+			fmt.Print("Tag mapping file (drag and drop, or press Enter to skip): ")
+			mapPath, _ = reader.ReadString('\n')
+			mapPath = strings.TrimSpace(mapPath)
+			mapPath = strings.TrimPrefix(mapPath, "& ")
+			mapPath = strings.Trim(mapPath, "'\"")
+			if mapPath != "" {
+				absMapPath := filepath.Clean(mapPath)
+				if !filepath.IsAbs(absMapPath) {
+					var err error
+					absMapPath, err = filepath.Abs(absMapPath)
+					if err == nil {
+						tagMapFile = absMapPath
+					}
+				} else {
+					tagMapFile = absMapPath
+				}
+			}
+		}
+
 		fmt.Println("\nGreat! I'm ready to convert your file. Here's what I'm going to do:")
 		fmt.Printf("- Read from: %s\n", inputFile)
 		fmt.Printf("- Save to: %s\n", outputPath)
@@ -175,6 +254,22 @@ It will ask you questions and help you create the right command for your needs.`
 				ifEmpty(endDate, "end"))
 		}
 		fmt.Printf("- Output format: %s\n", outputFormat)
+
+		if categoryMapFile != "" || payeeMapFile != "" || accountMapFile != "" || tagMapFile != "" {
+			fmt.Println("- Mappings to apply:")
+			if categoryMapFile != "" {
+				fmt.Printf("  • Categories: %s\n", categoryMapFile)
+			}
+			if payeeMapFile != "" {
+				fmt.Printf("  • Payees: %s\n", payeeMapFile)
+			}
+			if accountMapFile != "" {
+				fmt.Printf("  • Accounts: %s\n", accountMapFile)
+			}
+			if tagMapFile != "" {
+				fmt.Printf("  • Tags: %s\n", tagMapFile)
+			}
+		}
 
 		fmt.Print("\nPress Enter to start the conversion (or Ctrl+C to cancel): ")
 		reader.ReadString('\n')
@@ -206,6 +301,18 @@ It will ask you questions and help you create the right command for your needs.`
 		}
 		if endDate != "" {
 			transactionArgs = append(transactionArgs, "--endDate", endDate)
+		}
+		if categoryMapFile != "" {
+			transactionArgs = append(transactionArgs, "--categoryMapFile", categoryMapFile)
+		}
+		if payeeMapFile != "" {
+			transactionArgs = append(transactionArgs, "--payeeMapFile", payeeMapFile)
+		}
+		if accountMapFile != "" {
+			transactionArgs = append(transactionArgs, "--accountMapFile", accountMapFile)
+		}
+		if tagMapFile != "" {
+			transactionArgs = append(transactionArgs, "--tagMapFile", tagMapFile)
 		}
 
 		rootCmd.SetArgs(transactionArgs)

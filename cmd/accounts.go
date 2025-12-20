@@ -8,6 +8,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -38,8 +39,14 @@ var accountsCmd = &cobra.Command{
 		var accountNames []string
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
+		// Build output file path using outputPath if provided
+		outputFilePath := accountOutputFile
+		if outputPath != "" {
+			outputFilePath = filepath.Join(outputPath, accountOutputFile)
+		}
+
 		// Create the account output file
-		accountFile, err := os.Create(accountOutputFile)
+		accountFile, err := os.Create(outputFilePath)
 		if err != nil {
 			fmt.Println("Error creating account file:", err)
 		} else {

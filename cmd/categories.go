@@ -8,6 +8,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -39,8 +40,14 @@ var categoriesCmd = &cobra.Command{
 		var catBlockHeaderRegex string = `(?m)^!Type:Cat\n`
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
+		// Build output file path using outputPath if provided
+		outputFilePath := categoryOutputFile
+		if outputPath != "" {
+			outputFilePath = filepath.Join(outputPath, categoryOutputFile)
+		}
+
 		// Create the category output file
-		categoryFile, err := os.Create(categoryOutputFile)
+		categoryFile, err := os.Create(outputFilePath)
 		if err != nil {
 			fmt.Println("Error creating category file:", err)
 			//return err

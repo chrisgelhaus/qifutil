@@ -8,6 +8,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -39,8 +40,14 @@ var tagsCmd = &cobra.Command{
 		var tagBlockHeaderRegex string = `(?m)^!Type:Tag\n`
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
+		// Build output file path using outputPath if provided
+		outputFilePath := tagsOutputFile
+		if outputPath != "" {
+			outputFilePath = filepath.Join(outputPath, tagsOutputFile)
+		}
+
 		// Create the tag output file
-		tagFile, err := os.Create(tagsOutputFile)
+		tagFile, err := os.Create(outputFilePath)
 		if err != nil {
 			fmt.Println("Error creating tag file:", err)
 		} else {

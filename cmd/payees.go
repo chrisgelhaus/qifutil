@@ -8,6 +8,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -38,8 +39,14 @@ var payeesCmd = &cobra.Command{
 		var transactionRegexString string = `D(?<month>\d{1,2})\/(\s?(?<day>\d{1,2}))'(?<year>\d{2})[\r\n]+(U(?<amount1>.*?)[\r\n]+)(T(?<amount2>.*?)[\r\n]+)(C(?<cleared>.*?)[\r\n]+)((N(?<number>.*?)[\r\n]+)?)(P(?<payee>.*?)[\r\n]+)((M(?<memo>.*?)[\r\n]+)?)(L(?<category>.*?)[\r\n]+)`
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
+		// Build output file path using outputPath if provided
+		outputFilePath := payeeOutputFile
+		if outputPath != "" {
+			outputFilePath = filepath.Join(outputPath, payeeOutputFile)
+		}
+
 		// Create the category output file
-		payeeFile, err := os.Create(payeeOutputFile)
+		payeeFile, err := os.Create(outputFilePath)
 		if err != nil {
 			fmt.Println("Error creating category file:", err)
 		} else {
