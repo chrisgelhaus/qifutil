@@ -32,7 +32,10 @@ func (h *TestHelper) CreateTempDir() string {
 
 // CopyTestData copies a test data file from testdata directory to the target path
 func (h *TestHelper) CopyTestData(filename string, targetPath string) {
-	src := filepath.Join("testdata", filename)
+	// testdata is located at test/testdata relative to the project root
+	// Go test runners are always executed from the project root
+	src := filepath.Join("test", "testdata", filename)
+
 	data, err := os.ReadFile(src)
 	if err != nil {
 		h.t.Fatalf("failed to read test data file %s: %v", src, err)

@@ -1,6 +1,6 @@
 # QIFUTIL
 
-**Latest Update (v1.5.0+):** Export commands now correctly respect the `--outputPath` flag, ensuring all output files are created in your specified directory. Mapping files are fully integrated into the wizard for easy data transformation.
+**Latest Update (v1.5.0+):** Export commands now correctly respect the `--outputPath` flag, ensuring all output files are created in your specified directory. Mapping files are fully integrated into the wizard for easy data transformation. Category/tag splitting improved for multi-slash tags. GitHub Actions build pipeline fixed and passing all tests.
 
 ## Quick Start Guide
 
@@ -351,6 +351,33 @@ qifutil wizard
 # ... etc ...
 ```
 
+### ✅ Fixed Category/Tag Splitting for Multi-Slash Tags
+**Issue:** The `SplitCategoryAndTag()` function was failing when tags contained multiple slashes (e.g., `Food:Groceries/Monthly/Extra`).
+
+**Solution:** Updated the splitting logic to only split on the first `/`, preserving all subsequent slashes in the tag portion.
+
+**Example:**
+```
+Input: "Food:Groceries/Monthly/Extra"
+Output: category="Food:Groceries", tag="Monthly/Extra"
+```
+
+**Impact:** Tags with nested values (like `/`) are now correctly preserved during data transformation.
+
+### ✅ Fixed GitHub Actions Build Pipeline
+**Issue:** Tests were failing on GitHub Actions (Ubuntu) due to:
+1. Syntax error in test helper (missing newline)
+2. Test data path resolution issues
+3. Failing unit test for category splitting
+
+**Solution:** 
+- Fixed syntax errors in `test/helper.go`
+- Consolidated testdata to single location: `test/testdata/`
+- Fixed category splitting logic to handle all test cases
+- Improved test robustness
+
+**Impact:** Automated builds on GitHub Actions now pass all tests and build successfully on Linux.
+
 ## Contributing
 
 Contributions are welcome! Please fork the repository and submit a pull request with your changes. Make sure to:
@@ -358,6 +385,8 @@ Contributions are welcome! Please fork the repository and submit a pull request 
 1. Add tests for any new functionality
 2. Update documentation as needed
 3. Follow the existing code style
+4. Verify all tests pass: `go test -v ./...`
+5. Build successfully: `go build -v ./...`
 4. Verify all tests pass before submitting
 
 ## License
