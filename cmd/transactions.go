@@ -30,6 +30,10 @@ var startDate string
 var endDate string
 var addTagForImport bool = false
 var maxRecordsPerFile int = 5000
+var csvColumns string
+
+// Default columns for Monarch Money format
+const DefaultMonarchColumns = "Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags"
 
 type TransactionRecord struct {
 	Date              string `json:"date" xml:"date"`
@@ -64,12 +68,12 @@ DESCRIPTION:
   Large accounts are automatically split into multiple files for easier handling.
 
 COMMON USES:
-  1. Export recent transactions:
-     qifutil export transactions -i data.qif -o ./export/ --startDate 2023-01-01
+  1. Export to Monarch Money format:
+     qifutil export transactions -i data.qif -o ./export/ -f MONARCH
 
-  2. Export specific accounts:
-     qifutil export transactions -i data.qif -o ./export/ \
-       --accounts "Checking,Credit Card"
+  2. Export with custom CSV columns:
+     qifutil export transactions -i data.qif -o ./export/ -f CSV \
+       --csvColumns "Date,Merchant,Category,Amount"
 
   3. Export with mappings:
      qifutil export transactions -i data.qif -o ./export/ \
@@ -84,6 +88,9 @@ TIPS:
 OPTIONS:
   --inputFile          Required. Path to the QIF file to process
   --outputPath         Required. Directory where CSV files will be created
+  --outputFormat       Optional. Output format: CSV, JSON, XML, or MONARCH (default: CSV)
+  --csvColumns         Optional. Comma-separated column names for CSV output
+                       (only applies to CSV format). Default is Monarch format.
   --accounts           Optional. Comma-separated list of accounts to process
   --categoryMapFile    Optional. CSV file mapping source to target categories
   --accountMapFile     Optional. CSV file mapping source to target account names
@@ -92,16 +99,32 @@ OPTIONS:
   --maxRecordsPerFile  Optional. Maximum transactions per output file (default: 5000)
   --addTagForImport    Optional. Add QIFIMPORT tag to all transactions
 
-OUTPUT FORMAT:
-  The exported CSV files will contain the following columns:
-    - Date (YYYY-MM-DD)
-    - Merchant (Payee)
-    - Category
-    - Account
-    - Original Statement
-    - Notes (Memo)
-    - Amount
-    - Tags
+SUPPORTED FORMATS:
+  CSV:     Generic CSV format. Column order is customizable via --csvColumns.
+           Available columns: Date, Merchant, Category, Account,
+           Original Statement, Notes, Amount, Tags
+
+  MONARCH: Optimized for Monarch Money import. Equivalent to CSV format with
+           all standard columns in the recommended order.
+
+  JSON:    JSON array of transaction objects. One file per account.
+
+  XML:     XML format with transaction elements. One file per account.
+
+EXAMPLE COLUMNS:
+  --csvColumns "Date,Merchant,Amount"
+  --csvColumns "Date,Merchant,Category,Account,Amount"
+  --csvColumns "Merchant,Amount,Category"
+
+DEFAULT CSV COLUMNS (MONARCH):
+  - Date (YYYY-MM-DD)
+  - Merchant (Payee)
+  - Category
+  - Account
+  - Original Statement
+  - Notes (Memo)
+  - Amount
+  - Tags
 
 MAPPING FILES:
   Mapping files should be CSV format with two columns:
@@ -209,7 +232,15 @@ MAPPING FILES:
 		// Output CSV Header
 		var transactionRegexString string = `D(?<month>\d{1,2})\/(\s?(?<day>\d{1,2}))'(?<year>\d{2})[\r\n]+(U(?<amount1>.*?)[\r\n]+)(T(?<amount2>.*?)[\r\n]+)(C(?<cleared>.*?)[\r\n]+)((N(?<number>.*?)[\r\n]+)?)(P(?<payee>.*?)[\r\n]+)((M(?<memo>.*?)[\r\n]+)?)(L(?<category>.*?)[\r\n]+)`
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
-		var outputCSVHeader string = "Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags\n"
+
+		// If MONARCH format is specified, use the default columns
+		columnsToUse := csvColumns
+		if strings.ToUpper(outputFormat) == "MONARCH" {
+			columnsToUse = DefaultMonarchColumns
+			outputFormat = "CSV" // Internally treat MONARCH as CSV
+		}
+
+		var outputCSVHeader string = columnsToUse + "\n"
 		var categoryMapping map[string]string
 		var payeeMapping map[string]string
 		var accountMapping map[string]string
@@ -470,9 +501,7 @@ MAPPING FILES:
 					if strings.ToUpper(outputFormat) == "JSON" {
 						records = append(records, record)
 					} else {
-						line := fmt.Sprintf("\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"\n",
-							record.Date, record.Merchant, record.Category, record.Account,
-							record.OriginalStatement, record.Notes, record.Amount, record.Tags)
+						line := buildCSVRow(record, columnsToUse)
 						if err := writeTransaction(outputFile, line); err != nil {
 							outputFile.Close()
 							fmt.Printf("failed to write transaction: %v\n", err)
@@ -577,7 +606,8 @@ func init() {
 
 	// Add command-specific flags
 	transactionsCmd.Flags().StringVarP(&outputFields, "outputFields", "", "", "Comma Separated list of fields to export from the QIF File.")
-	transactionsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, XML).")
+	transactionsCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, XML, MONARCH).")
+	transactionsCmd.Flags().StringVarP(&csvColumns, "csvColumns", "", DefaultMonarchColumns, "Comma-separated list of columns for CSV output (only used with CSV format). Default is Monarch Money format.")
 	transactionsCmd.Flags().StringVarP(&accountMappingFile, "accountMapFile", "a", "", "Supplied mapping file for accounts. Optional.")
 	transactionsCmd.Flags().StringVarP(&categoryMappingFile, "categoryMapFile", "c", "", "Supplied mapping file for categories. Optional.")
 	transactionsCmd.Flags().StringVarP(&payeeMappingFile, "payeeMapFile", "p", "", "Supplied mapping file for payees. Optional.")
@@ -645,6 +675,47 @@ func applyMapping(input string, mapping map[string]string) string {
 func writeHeader(f *os.File, h string) error {
 	_, err := f.WriteString(h)
 	return err
+}
+
+// buildCSVRow builds a CSV row from a TransactionRecord based on specified columns
+func buildCSVRow(record TransactionRecord, columns string) string {
+	columnList := strings.Split(columns, ",")
+	values := make([]string, len(columnList))
+
+	for i, col := range columnList {
+		col = strings.TrimSpace(col)
+		switch col {
+		case "Date":
+			values[i] = record.Date
+		case "Merchant":
+			values[i] = record.Merchant
+		case "Category":
+			values[i] = record.Category
+		case "Account":
+			values[i] = record.Account
+		case "Original Statement":
+			values[i] = record.OriginalStatement
+		case "Notes":
+			values[i] = record.Notes
+		case "Amount":
+			values[i] = record.Amount
+		case "Tags":
+			values[i] = record.Tags
+		default:
+			values[i] = ""
+		}
+	}
+
+	// Build quoted CSV line
+	var line strings.Builder
+	for i, val := range values {
+		if i > 0 {
+			line.WriteString(",")
+		}
+		line.WriteString("\"" + strings.ReplaceAll(val, "\"", "\"\"") + "\"")
+	}
+	line.WriteString("\n")
+	return line.String()
 }
 
 func writeTransaction(f *os.File, t string) error {

@@ -171,7 +171,77 @@ qifutil export transactions --inputFile "AllAccounts.QIF" --outputPath "C:\expor
     --tagMapFile "tags.csv" \
     --addTagForImport true
 ```
-Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`).
+Use the `--outputFormat` flag to specify `CSV`, `JSON`, `XML`, or `MONARCH` (default `CSV`).
+
+## Output Formats
+
+QIFUTIL supports multiple output formats to suit different use cases:
+
+### Monarch Money Format (Optimized for Import)
+For the easiest import into Monarch Money, use the MONARCH format:
+
+```sh
+qifutil export transactions --inputFile "data.qif" --outputPath "export/" --outputFormat MONARCH
+```
+
+This format uses the recommended column order and structure for Monarch compatibility:
+- Date, Merchant, Category, Account, Original Statement, Notes, Amount, Tags
+
+The MONARCH format automatically:
+- Splits large files into 5000-record chunks (Monarch's recommended limit)
+- Maintains proper headers in each split file
+- Preserves all transaction details
+- Handles special characters properly
+
+### Generic CSV Format with Custom Columns
+The CSV format allows you to select exactly which columns to include in your export:
+
+```sh
+# Only export Date, Merchant, and Amount
+qifutil export transactions --inputFile "data.qif" --outputPath "export/" \
+    --outputFormat CSV --csvColumns "Date,Merchant,Amount"
+
+# Custom column order
+qifutil export transactions --inputFile "data.qif" --outputPath "export/" \
+    --outputFormat CSV --csvColumns "Merchant,Category,Amount,Date"
+```
+
+**Available Columns (in any order):**
+- `Date` - Transaction date (YYYY-MM-DD)
+- `Merchant` - Payee/merchant name
+- `Category` - Transaction category
+- `Account` - Account name
+- `Original Statement` - Original payee from QIF
+- `Notes` - Transaction memo/notes
+- `Amount` - Transaction amount
+- `Tags` - Tags extracted from category
+
+If `--csvColumns` is not specified, CSV format uses the Monarch Money defaults.
+
+### JSON Format
+For technical users and system integration:
+
+```sh
+qifutil export transactions --inputFile "data.qif" --outputPath "export/" --outputFormat JSON
+```
+
+Produces structured JSON with all transaction details, suitable for:
+- REST API imports
+- Data processing scripts
+- System integration
+- Database imports
+
+### XML Format
+For enterprise system integration:
+
+```sh
+qifutil export transactions --inputFile "data.qif" --outputPath "export/" --outputFormat XML
+```
+
+Produces well-formed XML with transaction elements, suitable for:
+- Enterprise data systems
+- XML-based workflows
+- Legacy system imports
 
 ## Mapping Files
 
