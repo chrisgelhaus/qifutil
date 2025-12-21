@@ -9,139 +9,174 @@ import (
 	"qifutil/test"
 )
 
-func TestTransactionsCmd(t *testing.T) {
-	// Skip this test as it requires complex setup and fixture files
-	// The functionality is tested manually and works correctly
-	t.Skip("Integration test - requires test fixtures and manual verification")
-
+func TestMonarchFormat(t *testing.T) {
 	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	outputDir := filepath.Join(tempDir, "output")
+	os.MkdirAll(outputDir, 0755)
 
-	t.Run("basic export", func(t *testing.T) {
-		// Set up test environment
-		tempDir := helper.CreateTempDir()
-		outputDir := filepath.Join(tempDir, "output")
-		os.MkdirAll(outputDir, 0755)
+	sourceFile := filepath.Join(tempDir, "sample.qif")
+	helper.CopyTestData("sample.qif", sourceFile)
 
-		inputFile := filepath.Join(tempDir, "sample.qif")
-		helper.CopyTestData("sample.qif", inputFile)
+	// Reset and set flags for MONARCH format
+	selectedAccounts = ""
+	startDate = ""
+	endDate = ""
+	outputFormat = "MONARCH"
+	csvColumns = DefaultMonarchColumns
+	inputFile = sourceFile
+	outputPath = outputDir
 
-		// Reset command flags
-		selectedAccounts = ""
-		startDate = ""
-		endDate = ""
-		outputFormat = "CSV"
-
-		// Set required flags
-		inputFile = inputFile
-		outputPath = outputDir
-
-		// Execute command
-		output := helper.CaptureOutput(func() {
-			transactionsCmd.Run(transactionsCmd, []string{})
-		})
-
-		// Verify output files were created
-		helper.AssertFileExists(filepath.Join(outputDir, "Checking Account_1.csv"))
-		helper.AssertFileExists(filepath.Join(outputDir, "Credit Card_1.csv"))
-
-		// Verify file contents
-		helper.AssertFileContains(filepath.Join(outputDir, "Checking Account_1.csv"), "Grocery Store")
-		helper.AssertFileContains(filepath.Join(outputDir, "Credit Card_1.csv"), "Electric Company")
-
-		// Verify command output
-		helper.AssertOutputContains(output, "Export completed successfully")
+	helper.CaptureOutput(func() {
+		transactionsCmd.Run(transactionsCmd, []string{})
 	})
 
-	t.Run("account filtering", func(t *testing.T) {
-		tempDir := helper.CreateTempDir()
-		outputDir := filepath.Join(tempDir, "output")
-		os.MkdirAll(outputDir, 0755)
+	checkingFile := filepath.Join(outputDir, "Checking Account_1.csv")
+	helper.AssertFileExists(checkingFile)
 
-		inputFile := filepath.Join(tempDir, "sample.qif")
-		helper.CopyTestData("sample.qif", inputFile)
-
-		// Reset and set flags
-		selectedAccounts = "Checking Account"
-		startDate = ""
-		endDate = ""
-		outputFormat = "CSV"
-		inputFile = inputFile
-		outputPath = outputDir
-
-		output := helper.CaptureOutput(func() {
-			transactionsCmd.Run(transactionsCmd, []string{})
-		})
-
-		// Verify only Checking Account file was created
-		helper.AssertFileExists(filepath.Join(outputDir, "Checking Account_1.csv"))
-		if _, err := os.Stat(filepath.Join(outputDir, "Credit Card_1.csv")); !os.IsNotExist(err) {
-			t.Error("Credit Card file should not exist when filtering for Checking Account")
+	// Verify MONARCH format has all 8 columns in the correct order
+	content, _ := os.ReadFile(checkingFile)
+	lines := strings.Split(string(content), "\n")
+	if len(lines) > 0 {
+		header := lines[0]
+		expectedHeader := "Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags"
+		if header != expectedHeader {
+			t.Errorf("MONARCH header mismatch.\nExpected: %s\nGot: %s", expectedHeader, header)
 		}
+	}
 
-		helper.AssertOutputContains(output, "Processed accounts: Checking Account")
+	// Verify MONARCH format includes all expected data
+	helper.AssertFileContains(checkingFile, "Grocery Store")
+	helper.AssertFileContains(checkingFile, "Food:Groceries")
+	helper.AssertFileContains(checkingFile, "Checking Account")
+	helper.AssertFileContains(checkingFile, "-45.23")
+}
+
+func TestCSVCustomColumns(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	outputDir := filepath.Join(tempDir, "output")
+	os.MkdirAll(outputDir, 0755)
+
+	sourceFile := filepath.Join(tempDir, "sample.qif")
+	helper.CopyTestData("sample.qif", sourceFile)
+
+	// Test with custom column selection
+	selectedAccounts = ""
+	startDate = ""
+	endDate = ""
+	outputFormat = "CSV"
+	csvColumns = "Date,Merchant,Amount,Category"
+	inputFile = sourceFile
+	outputPath = outputDir
+
+	helper.CaptureOutput(func() {
+		transactionsCmd.Run(transactionsCmd, []string{})
 	})
 
-	t.Run("date filtering", func(t *testing.T) {
-		tempDir := helper.CreateTempDir()
-		outputDir := filepath.Join(tempDir, "output")
-		os.MkdirAll(outputDir, 0755)
+	checkingFile := filepath.Join(outputDir, "Checking Account_1.csv")
+	helper.AssertFileExists(checkingFile)
 
-		inputFile := filepath.Join(tempDir, "sample.qif")
-		helper.CopyTestData("sample.qif", inputFile)
-
-		// Reset and set flags
-		selectedAccounts = ""
-		startDate = "2023-01-16"
-		endDate = "2023-01-16"
-		outputFormat = "CSV"
-		inputFile = inputFile
-		outputPath = outputDir
-
-		output := helper.CaptureOutput(func() {
-			transactionsCmd.Run(transactionsCmd, []string{})
-		})
-
-		// Verify date filtered content
-		checkingFile := filepath.Join(outputDir, "Checking Account_1.csv")
-		helper.AssertFileExists(checkingFile)
-		helper.AssertFileContains(checkingFile, "2023-01-16")
-
-		content, _ := os.ReadFile(checkingFile)
-		if strings.Contains(string(content), "2023-01-15") {
-			t.Error("File should not contain transactions from 2023-01-15")
+	// Verify custom columns are in the correct order
+	content, _ := os.ReadFile(checkingFile)
+	lines := strings.Split(string(content), "\n")
+	if len(lines) > 0 {
+		header := lines[0]
+		expectedHeader := "Date,Merchant,Amount,Category"
+		if header != expectedHeader {
+			t.Errorf("CSV custom columns header mismatch.\nExpected: %s\nGot: %s", expectedHeader, header)
 		}
+	}
 
-		helper.AssertOutputContains(output, "Date range: 2023-01-16 to 2023-01-16")
+	// Verify data is present
+	helper.AssertFileContains(checkingFile, "2023-01-15")
+	helper.AssertFileContains(checkingFile, "Grocery Store")
+	helper.AssertFileContains(checkingFile, "-45.23")
+	helper.AssertFileContains(checkingFile, "Food:Groceries")
+}
+
+func TestCSVMinimalColumns(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	outputDir := filepath.Join(tempDir, "output")
+	os.MkdirAll(outputDir, 0755)
+
+	sourceFile := filepath.Join(tempDir, "sample.qif")
+	helper.CopyTestData("sample.qif", sourceFile)
+
+	// Test with minimal column set
+	selectedAccounts = ""
+	startDate = ""
+	endDate = ""
+	outputFormat = "CSV"
+	csvColumns = "Merchant,Amount"
+	inputFile = sourceFile
+	outputPath = outputDir
+
+	helper.CaptureOutput(func() {
+		transactionsCmd.Run(transactionsCmd, []string{})
 	})
 
-	t.Run("output formats", func(t *testing.T) {
-		formats := []string{"CSV", "JSON", "XML"}
+	checkingFile := filepath.Join(outputDir, "Checking Account_1.csv")
+	helper.AssertFileExists(checkingFile)
 
-		for _, format := range formats {
-			t.Run(format, func(t *testing.T) {
-				tempDir := helper.CreateTempDir()
-				outputDir := filepath.Join(tempDir, "output")
-				os.MkdirAll(outputDir, 0755)
-
-				inputFile := filepath.Join(tempDir, "sample.qif")
-				helper.CopyTestData("sample.qif", inputFile)
-
-				// Reset and set flags
-				selectedAccounts = ""
-				startDate = ""
-				endDate = ""
-				outputFormat = format
-				inputFile = inputFile
-				outputPath = outputDir
-
-				helper.CaptureOutput(func() {
-					transactionsCmd.Run(transactionsCmd, []string{})
-				})
-
-				ext := "." + strings.ToLower(format)
-				helper.AssertFileExists(filepath.Join(outputDir, "Checking Account_1"+ext))
-				helper.AssertFileExists(filepath.Join(outputDir, "Credit Card_1"+ext))
-			})
+	// Verify minimal columns
+	content, _ := os.ReadFile(checkingFile)
+	lines := strings.Split(string(content), "\n")
+	if len(lines) > 0 {
+		header := lines[0]
+		expectedHeader := "Merchant,Amount"
+		if header != expectedHeader {
+			t.Errorf("CSV minimal columns header mismatch.\nExpected: %s\nGot: %s", expectedHeader, header)
 		}
+	}
+}
+
+func TestCSVDefaultEqualsMonarch(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	outputDirA := filepath.Join(tempDir, "output_a")
+	outputDirB := filepath.Join(tempDir, "output_b")
+	os.MkdirAll(outputDirA, 0755)
+	os.MkdirAll(outputDirB, 0755)
+
+	sourceFileA := filepath.Join(tempDir, "sample_a.qif")
+	helper.CopyTestData("sample.qif", sourceFileA)
+
+	// Generate output with MONARCH format
+	selectedAccounts = ""
+	startDate = ""
+	endDate = ""
+	outputFormat = "MONARCH"
+	csvColumns = DefaultMonarchColumns
+	inputFile = sourceFileA
+	outputPath = outputDirA
+
+	helper.CaptureOutput(func() {
+		transactionsCmd.Run(transactionsCmd, []string{})
 	})
+
+	// Generate output with CSV format (using defaults)
+	sourceFileB := filepath.Join(tempDir, "sample_b.qif")
+	helper.CopyTestData("sample.qif", sourceFileB)
+
+	outputFormat = "CSV"
+	csvColumns = DefaultMonarchColumns
+	inputFile = sourceFileB
+	outputPath = outputDirB
+
+	helper.CaptureOutput(func() {
+		transactionsCmd.Run(transactionsCmd, []string{})
+	})
+
+	// Compare the two outputs
+	monarchFile := filepath.Join(outputDirA, "Checking Account_1.csv")
+	csvFile := filepath.Join(outputDirB, "Checking Account_1.csv")
+
+	monarchContent, _ := os.ReadFile(monarchFile)
+	csvContent, _ := os.ReadFile(csvFile)
+
+	if string(monarchContent) != string(csvContent) {
+		t.Error("MONARCH format should produce identical output to CSV with default columns")
+	}
 }

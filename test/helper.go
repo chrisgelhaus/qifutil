@@ -19,6 +19,29 @@ func NewHelper(t *testing.T) *TestHelper {
 	return &TestHelper{t: t}
 }
 
+// getProjectRoot finds the project root by looking for go.mod
+func (h *TestHelper) getProjectRoot() string {
+	// Start from the current working directory
+	wd, err := os.Getwd()
+	if err != nil {
+		h.t.Fatalf("failed to get working directory: %v", err)
+	}
+
+	// Walk up the directory tree looking for go.mod
+	for {
+		if _, err := os.Stat(filepath.Join(wd, "go.mod")); err == nil {
+			return wd
+		}
+
+		parent := filepath.Dir(wd)
+		if parent == wd {
+			// Reached root directory without finding go.mod
+			h.t.Fatalf("could not find project root (go.mod not found)")
+		}
+		wd = parent
+	}
+}
+
 // CreateTempDir creates a temporary directory and returns its path.
 // The directory will be automatically cleaned up when the test ends.
 func (h *TestHelper) CreateTempDir() string {
@@ -32,9 +55,9 @@ func (h *TestHelper) CreateTempDir() string {
 
 // CopyTestData copies a test data file from testdata directory to the target path
 func (h *TestHelper) CopyTestData(filename string, targetPath string) {
-	// testdata is located at test/testdata relative to the project root
-	// Go test runners are always executed from the project root
-	src := filepath.Join("test", "testdata", filename)
+	// Find the project root dynamically
+	projectRoot := h.getProjectRoot()
+	src := filepath.Join(projectRoot, "test", "testdata", filename)
 
 	data, err := os.ReadFile(src)
 	if err != nil {
