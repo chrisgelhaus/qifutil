@@ -1,6 +1,11 @@
 # QIFUTIL
 
-**Latest Update (v1.5.0+):** Export commands now correctly respect the `--outputPath` flag, ensuring all output files are created in your specified directory. Mapping files are fully integrated into the wizard for easy data transformation. Category/tag splitting improved for multi-slash tags. GitHub Actions build pipeline fixed and passing all tests.
+**Latest Update (v1.8.0):** Major wizard improvements and new balance history export feature! 
+- ✨ **New: Balance History Export** - Generate daily balance history files for Monarch Money imports with backward/forward calculation modes
+- 🛠️ **Enhanced Wizard** - Improved input validation with reprompting for invalid entries, better date range validation (enforces start ≤ end date), cleaner prompts
+- 🐛 **Wizard Bug Fixes** - Fixed yes/no response validation (now accepts y/Y for yes, n/N or Enter for no), removed misleading "drag and drop" references, proper error messages for invalid input
+
+Previous features: Export commands correctly respect the `--outputPath` flag, mapping files fully integrated into wizard, improved category/tag splitting, fixed GitHub Actions build pipeline.
 
 ## Quick Start Guide
 
@@ -15,10 +20,11 @@
 qifutil wizard
 ```
 The wizard will guide you through:
-- Selecting your input file (drag & drop supported)
+- Selecting your input file (enter the file path)
 - Choosing where to save the exported files
 - Selecting specific accounts by number (e.g., "1,3,5")
-- Setting date ranges (optional)
+- Setting date ranges with validation (YYYY-MM-DD format)
+- Optionally generating balance history for Monarch Money
 - Choosing output format (CSV/JSON/XML)
 - Applying optional mapping files to standardize your data
 
@@ -43,9 +49,10 @@ QIFUTIL is a utility for exporting financial data from Quicken in QIF format. Th
 ## Features
 
 - Interactive wizard for easy file conversion
-  - Simple drag & drop file selection
+  - Simple file path entry with validation
   - Easy account selection by number (no typing long account names)
-  - Guided process for all options
+  - Guided process for all options with input validation
+  - Optional balance history generation for Monarch Money
   - Optional mapping files to standardize data
 - Smart file handling
   - Automatic file splitting for Monarch compatibility (5000 records per file)
@@ -53,6 +60,7 @@ QIFUTIL is a utility for exporting financial data from Quicken in QIF format. Th
   - Creates organized output with clear file naming
   - All output respects `--outputPath` for organized exports
 - Export options
+  - **NEW:** Balance history export (daily account balance tracking)
   - CSV format (optimized for Monarch import)
   - JSON format (for technical users)
   - XML format (for system integration)
@@ -63,12 +71,16 @@ QIFUTIL is a utility for exporting financial data from Quicken in QIF format. Th
   - Transform tag values
 - Flexible filtering
   - Select specific accounts to export
-  - Filter by date range
+  - Filter by date range with validation
   - Apply mappings to transform extracted data
 - Analysis tools
   - Account statistics and analysis
   - List and explore available accounts
   - Transaction summaries
+- Improved validation
+  - Yes/no prompts with clear input handling
+  - Date range validation (start date ≤ end date)
+  - Balance history with forward/backward calculation modes
 
 ## Usage
 
@@ -172,6 +184,44 @@ qifutil export transactions --inputFile "AllAccounts.QIF" --outputPath "C:\expor
     --addTagForImport true
 ```
 Use the `--outputFormat` flag to specify `CSV`, `JSON`, `XML`, or `MONARCH` (default `CSV`).
+
+### Export Balance History (NEW in v1.8.0)
+Generate daily balance history files for Monarch Money imports. This shows account balance changes over time, useful for migrating historical data.
+
+For the easiest experience, the wizard will ask if you want balance history when exporting transactions. Or use the command:
+
+```sh
+# Using current balance (backward calculation from known ending balance)
+qifutil export balance-history --inputFile "AllAccounts.QIF" --outputPath "C:\export\\" \
+    --accounts "Checking Account" \
+    --currentBalance 5000.00
+
+# Using opening balance (forward calculation from known starting balance)
+qifutil export balance-history --inputFile "AllAccounts.QIF" --outputPath "C:\export\\" \
+    --accounts "Savings Account" \
+    --openingBalance 10000.00 \
+    --startDate "2025-01-01" \
+    --endDate "2025-12-31
+```
+
+**Balance History Features:**
+- Generates CSV file with `Date,Balance` columns
+- One record per day (only for days with transactions)
+- Backward calculation: works from a known current balance back through transactions
+- Forward calculation: works from a known opening balance forward through transactions
+- Respects date filtering (--startDate, --endDate)
+- Respects file splitting settings (--recordsPerFile)
+- File naming: `{AccountName}_balance_history_1.csv`
+- Perfect for visualizing account balance trends in Monarch Money
+
+**Balance Calculation Examples:**
+If your current balance is $2500 and you have two transactions (-$45.23, -$35.50):
+- Jan 15: $2535.50 (2500 - 45.23)
+- Jan 16: $2500.00 (2535.50 - 35.50) ✓
+
+If your opening balance is $2500 with the same transactions:
+- Jan 15: $2454.77 (2500 - 45.23)
+- Jan 16: $2419.27 (2454.77 - 35.50) ✓
 
 ## Output Formats
 

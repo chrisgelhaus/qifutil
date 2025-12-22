@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -27,7 +28,7 @@ It will ask you questions and help you create the right command for your needs.`
 		fmt.Println("Press Enter after each response.")
 
 		// Get input file
-		fmt.Print("\nStep 1: Where is your QIF file? (Drag and drop the file here): ")
+		fmt.Print("\nStep 1: Where is your QIF file? (Enter the file path): ")
 		inputPath, _ := reader.ReadString('\n')
 		// Clean the path from PowerShell artifacts
 		inputPath = strings.TrimSpace(inputPath)
@@ -102,9 +103,56 @@ It will ask you questions and help you create the right command for your needs.`
 			fmt.Printf("%2d. %s\n", i+1, account)
 		}
 
-		fmt.Print("\nWould you like to convert specific accounts? (y/n, default: all accounts): ")
-		answer, _ := reader.ReadString('\n')
-		if strings.ToLower(strings.TrimSpace(answer)) == "y" {
+		// Ask about balance history generation early so we can capture account
+		var generateBalanceHistoryLocal bool
+		var balanceHistoryAccount string
+		var balanceHistoryValue string
+		var isBalanceHistoryOpening bool
+
+		if getYesNoResponse(reader, "\nWould you like to generate balance history files? (y/n): ") {
+			generateBalanceHistoryLocal = true
+
+			fmt.Println("\nBalance history shows account balance changes over time (useful for Monarch Money).")
+			fmt.Print("Enter the account number for balance history (see list above): ")
+			accountInput, _ := reader.ReadString('\n')
+			accountInput = strings.TrimSpace(accountInput)
+
+			// Validate account number
+			if accountNum, err := strconv.Atoi(accountInput); err == nil && accountNum > 0 && accountNum <= len(accountList) {
+				balanceHistoryAccount = accountList[accountNum-1]
+				fmt.Printf("Selected account: %s\n", balanceHistoryAccount)
+
+				fmt.Println("\nChoose balance reference point:")
+				fmt.Println("1. Current balance (ending - what the account totals at the end)")
+				fmt.Println("2. Opening balance (starting - what the account had at the beginning)")
+				fmt.Print("Choose a number (1-2, default: 1 - current balance): ")
+				balanceChoice, _ := reader.ReadString('\n')
+				balanceChoice = strings.TrimSpace(balanceChoice)
+
+				isBalanceHistoryOpening = balanceChoice == "2"
+
+				if isBalanceHistoryOpening {
+					fmt.Print("Enter the opening balance (starting amount): ")
+				} else {
+					fmt.Print("Enter the current balance (ending amount): ")
+				}
+				balanceInput, _ := reader.ReadString('\n')
+				balanceInput = strings.TrimSpace(balanceInput)
+
+				// Validate balance is a number
+				if _, err := strconv.ParseFloat(balanceInput, 64); err != nil {
+					fmt.Printf("Invalid balance: %v. Balance history will not be generated.\n", err)
+					generateBalanceHistoryLocal = false
+				} else {
+					balanceHistoryValue = balanceInput
+				}
+			} else {
+				fmt.Println("Invalid account number. Balance history will not be generated.")
+				generateBalanceHistoryLocal = false
+			}
+		}
+
+		if getYesNoResponse(reader, "\nWould you like to convert specific accounts? (y/n, default: all accounts): ") {
 			fmt.Print("Enter account numbers separated by commas (e.g., 1,3,5): ")
 			numbersStr, _ := reader.ReadString('\n')
 			numbersStr = strings.TrimSpace(numbersStr)
@@ -131,19 +179,11 @@ It will ask you questions and help you create the right command for your needs.`
 		}
 
 		// Ask about date filtering
-		fmt.Print("\nDo you want to filter by date range? (y/n): ")
-		answer, _ = reader.ReadString('\n')
-		if strings.ToLower(strings.TrimSpace(answer)) == "y" {
-			fmt.Print("Start date (YYYY-MM-DD, or press Enter to skip): ")
-			date, _ := reader.ReadString('\n')
-			startDate = strings.TrimSpace(date)
-
-			fmt.Print("End date (YYYY-MM-DD, or press Enter to skip): ")
-			date, _ = reader.ReadString('\n')
-			endDate = strings.TrimSpace(date)
+		if getYesNoResponse(reader, "\nDo you want to filter by date range? (y/n): ") {
+			startDate, endDate = getValidatedDateRange(reader)
 		}
 
-		// Ask about output format
+		// Ask about output format (balance history is already captured earlier)
 		fmt.Print("\nWhat format would you like the output in?\n")
 		fmt.Println("1. CSV (spreadsheet format, works with Excel) [default]")
 		fmt.Println("2. JSON (technical format)")
@@ -164,10 +204,8 @@ It will ask you questions and help you create the right command for your needs.`
 		// Ask about mapping files
 		var categoryMapFile, payeeMapFile, accountMapFile, tagMapFile string
 
-		fmt.Print("\nWould you like to apply mapping files to transform data? (y/n): ")
-		answer, _ = reader.ReadString('\n')
-		if strings.ToLower(strings.TrimSpace(answer)) == "y" {
-			fmt.Print("\nCategory mapping file (drag and drop, or press Enter to skip): ")
+		if getYesNoResponse(reader, "\nWould you like to apply mapping files to transform data? (y/n): ") {
+			fmt.Print("\nCategory mapping file (enter file path, or press Enter to skip): ")
 			mapPath, _ := reader.ReadString('\n')
 			mapPath = strings.TrimSpace(mapPath)
 			mapPath = strings.TrimPrefix(mapPath, "& ")
@@ -185,7 +223,7 @@ It will ask you questions and help you create the right command for your needs.`
 				}
 			}
 
-			fmt.Print("Payee mapping file (drag and drop, or press Enter to skip): ")
+			fmt.Print("Payee mapping file (enter file path, or press Enter to skip): ")
 			mapPath, _ = reader.ReadString('\n')
 			mapPath = strings.TrimSpace(mapPath)
 			mapPath = strings.TrimPrefix(mapPath, "& ")
@@ -203,7 +241,7 @@ It will ask you questions and help you create the right command for your needs.`
 				}
 			}
 
-			fmt.Print("Account mapping file (drag and drop, or press Enter to skip): ")
+			fmt.Print("Account mapping file (enter file path, or press Enter to skip): ")
 			mapPath, _ = reader.ReadString('\n')
 			mapPath = strings.TrimSpace(mapPath)
 			mapPath = strings.TrimPrefix(mapPath, "& ")
@@ -221,7 +259,7 @@ It will ask you questions and help you create the right command for your needs.`
 				}
 			}
 
-			fmt.Print("Tag mapping file (drag and drop, or press Enter to skip): ")
+			fmt.Print("Tag mapping file (enter file path, or press Enter to skip): ")
 			mapPath, _ = reader.ReadString('\n')
 			mapPath = strings.TrimSpace(mapPath)
 			mapPath = strings.TrimPrefix(mapPath, "& ")
@@ -254,6 +292,14 @@ It will ask you questions and help you create the right command for your needs.`
 				ifEmpty(endDate, "end"))
 		}
 		fmt.Printf("- Output format: %s\n", outputFormat)
+
+		if generateBalanceHistoryLocal {
+			if isBalanceHistoryOpening {
+				fmt.Printf("- Generate balance history (opening balance: %s)\n", balanceHistoryValue)
+			} else {
+				fmt.Printf("- Generate balance history (current balance: %s)\n", balanceHistoryValue)
+			}
+		}
 
 		if categoryMapFile != "" || payeeMapFile != "" || accountMapFile != "" || tagMapFile != "" {
 			fmt.Println("- Mappings to apply:")
@@ -317,6 +363,35 @@ It will ask you questions and help you create the right command for your needs.`
 
 		rootCmd.SetArgs(transactionArgs)
 		rootCmd.Execute()
+
+		// Generate balance history if requested
+		if generateBalanceHistoryLocal && balanceHistoryAccount != "" {
+			fmt.Println("\nGenerating balance history...")
+
+			balanceHistoryArgs := []string{
+				"export",
+				"balance-history",
+				"--inputFile", inputFile,
+				"--outputPath", outputPath,
+				"--accounts", balanceHistoryAccount,
+			}
+
+			if isBalanceHistoryOpening {
+				balanceHistoryArgs = append(balanceHistoryArgs, "--openingBalance", balanceHistoryValue)
+			} else {
+				balanceHistoryArgs = append(balanceHistoryArgs, "--currentBalance", balanceHistoryValue)
+			}
+
+			if startDate != "" {
+				balanceHistoryArgs = append(balanceHistoryArgs, "--startDate", startDate)
+			}
+			if endDate != "" {
+				balanceHistoryArgs = append(balanceHistoryArgs, "--endDate", endDate)
+			}
+
+			rootCmd.SetArgs(balanceHistoryArgs)
+			rootCmd.Execute()
+		}
 	},
 }
 
@@ -360,4 +435,92 @@ func parseAccountList(output string) []string {
 	}
 
 	return accounts
+}
+
+// validateDate checks if a date string is in YYYY-MM-DD format
+// Returns the parsed time.Time or an error
+func validateDate(dateStr string) (time.Time, error) {
+	if dateStr == "" {
+		return time.Time{}, nil // Empty is valid (skip date)
+	}
+
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid date format, use YYYY-MM-DD")
+	}
+
+	return t, nil
+}
+
+// getValidatedDate reads and validates a date from user input
+// Allows empty input to represent "skip" and returns an empty string in that case
+func getValidatedDate(reader *bufio.Reader, prompt string) string {
+	for {
+		fmt.Print(prompt)
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		// Empty input is allowed (skip filtering)
+		if input == "" {
+			return ""
+		}
+
+		// Validate the date format
+		_, err := validateDate(input)
+		if err != nil {
+			fmt.Printf("Invalid date: %v. Please enter a date in YYYY-MM-DD format or press Enter to skip.\n", err)
+			continue
+		}
+
+		return input
+	}
+}
+
+// getValidatedDateRange reads and validates both start and end dates
+// Ensures start date is not after end date
+func getValidatedDateRange(reader *bufio.Reader) (string, string) {
+	for {
+		startDate := getValidatedDate(reader, "Start date (YYYY-MM-DD, or press Enter to skip): ")
+		endDate := getValidatedDate(reader, "End date (YYYY-MM-DD, or press Enter to skip): ")
+
+		// If both are empty, that's valid
+		if startDate == "" && endDate == "" {
+			return startDate, endDate
+		}
+
+		// If only one is specified, that's valid
+		if startDate == "" || endDate == "" {
+			return startDate, endDate
+		}
+
+		// Both are specified, validate ordering
+		startTime, _ := time.Parse("2006-01-02", startDate)
+		endTime, _ := time.Parse("2006-01-02", endDate)
+
+		if startTime.After(endTime) {
+			fmt.Println("Error: Start date cannot be after end date. Please try again.")
+			continue
+		}
+
+		return startDate, endDate
+	}
+}
+
+// getYesNoResponse reads and validates a yes/no response from the user
+// Returns true for yes (y/Y), false for no (n/N or empty), and reprompts for invalid input
+func getYesNoResponse(reader *bufio.Reader, prompt string) bool {
+	for {
+		fmt.Print(prompt)
+		answer, _ := reader.ReadString('\n')
+		answer = strings.ToLower(strings.TrimSpace(answer))
+
+		switch answer {
+		case "y":
+			return true
+		case "n", "":
+			return false
+		default:
+			fmt.Println("Invalid input. Please enter 'y' for yes, 'n' for no, or press Enter for no.")
+		}
+	}
 }
