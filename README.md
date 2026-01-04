@@ -1,11 +1,12 @@
 # QIFUTIL
 
-**Latest Update (v1.8.0):** Major wizard improvements and new balance history export feature! 
-- ✨ **New: Balance History Export** - Generate daily balance history files for Monarch Money imports with backward/forward calculation modes
-- 🛠️ **Enhanced Wizard** - Improved input validation with reprompting for invalid entries, better date range validation (enforces start ≤ end date), cleaner prompts
-- 🐛 **Wizard Bug Fixes** - Fixed yes/no response validation (now accepts y/Y for yes, n/N or Enter for no), removed misleading "drag and drop" references, proper error messages for invalid input
+**Latest Update (v1.8.2):** Smart wizard flow, improved amount formatting, and balance history enhancements!
+- ✨ **Enhanced Wizard** - Smarter flow that eliminates redundant prompts. When selecting "Both" exports, balance history account is automatically used for transactions. Date range filtering now available for all export types including balance history only.
+- 🐛 **Amount Formatting Fixed** - Transaction amounts now export without commas (e.g., "1234.56" instead of "1,234.56") for maximum compatibility with other systems
+- ✨ **Balance History Improvements** - Full date range filtering support for balance-history-only exports
+- 📋 **Previous (v1.8.0):** Major wizard improvements with new balance history export feature, improved input validation, and bug fixes
 
-Previous features: Export commands correctly respect the `--outputPath` flag, mapping files fully integrated into wizard, improved category/tag splitting, fixed GitHub Actions build pipeline.
+Core features: Export commands respect the `--outputPath` flag, mapping files fully integrated into wizard, improved category/tag splitting, fixed GitHub Actions build pipeline, US-formatted numbers (with commas) now properly handled throughout.
 
 ## Quick Start Guide
 
@@ -438,7 +439,43 @@ The test suite covers:
 - Error cases and edge conditions
 - Utility functions
 
-## Recent Improvements (v1.5.0+)
+## Recent Improvements
+
+### ✅ Smart Wizard Flow (v1.8.2)
+**Enhancement:** The wizard now eliminates redundant questions for a smoother user experience.
+
+**Improvements:**
+- When selecting "Both" exports (option 3), the wizard no longer asks "Would you like to generate balance history files?" - this choice was already made
+- When selecting "Balance history only" (option 2), the wizard doesn't ask about converting specific accounts - you've already selected the account for balance history
+- When both exports are enabled, the balance history account is automatically used for the transaction export with a confirmation message
+- Date range filtering now available for all export types (transactions, balance history only, or both)
+
+**Result:** The wizard flow is now context-aware and only asks relevant questions based on your choices.
+
+### ✅ Transaction Amount Formatting (v1.8.2)
+**Issue:** Transaction amounts exported with US-formatted commas (e.g., "1,234.56") which could cause compatibility issues with some systems.
+
+**Solution:** All transaction amounts now export without commas ("1234.56") for maximum compatibility with other tools and systems like Monarch Money.
+
+**Impact:** Clean, parseable amounts in all export formats.
+
+### ✅ Balance History Date Range Filtering (v1.8.1)
+**Issue:** Date range filtering was only available when exporting transactions, not for balance history exports.
+
+**Solution:** Date range filtering (`--startDate`, `--endDate`) now fully supported for:
+- Balance history only exports
+- Combined transaction + balance history exports
+
+**Impact:** Better control over historical data range for balance tracking.
+
+### ✅ Amount Parsing with Comma Handling (v1.8.1)
+**Issue:** Balance history amounts with US-formatted numbers (e.g., "9,852.00") failed to parse, causing transactions to be skipped.
+
+**Solution:** Added automatic comma-stripping from amounts before parsing, allowing proper handling of US-formatted bank exports.
+
+**Impact:** Balance history now correctly includes all transactions from banks that export comma-formatted amounts.
+
+## Earlier Improvements (v1.5.0+)
 
 ### ✅ Fixed Export Command Output Paths
 **Issue:** Export commands (`accounts`, `categories`, `payees`, `tags`) were ignoring the `--outputPath` flag and creating files in the current working directory.
