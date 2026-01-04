@@ -245,6 +245,9 @@ TIPS:
 				year := strings.TrimSpace(t[4])
 				amount := strings.TrimSpace(t[6])
 
+				// Remove commas from amount (for US-formatted numbers like 1,234.56)
+				amount = strings.ReplaceAll(amount, ",", "")
+
 				// Parse amount
 				amountFloat, err := strconv.ParseFloat(amount, 64)
 				if err != nil {

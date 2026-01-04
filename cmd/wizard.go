@@ -103,13 +103,25 @@ It will ask you questions and help you create the right command for your needs.`
 			fmt.Printf("%2d. %s\n", i+1, account)
 		}
 
+		// Ask what type of export to perform
+		fmt.Println("\nWhat would you like to export?")
+		fmt.Println("1. Transaction data (default)")
+		fmt.Println("2. Balance history only")
+		fmt.Println("3. Both transactions and balance history")
+		fmt.Print("Choose a number (1-3): ")
+		exportChoice, _ := reader.ReadString('\n')
+		exportChoice = strings.TrimSpace(exportChoice)
+
+		exportTransactions := exportChoice != "2" // Default to transactions
+		exportBalanceHistoryFlow := exportChoice == "2" || exportChoice == "3"
+
 		// Ask about balance history generation early so we can capture account
 		var generateBalanceHistoryLocal bool
 		var balanceHistoryAccount string
 		var balanceHistoryValue string
 		var isBalanceHistoryOpening bool
 
-		if getYesNoResponse(reader, "\nWould you like to generate balance history files? (y/n): ") {
+		if exportBalanceHistoryFlow {
 			generateBalanceHistoryLocal = true
 
 			fmt.Println("\nBalance history shows account balance changes over time (useful for Monarch Money).")
@@ -152,128 +164,140 @@ It will ask you questions and help you create the right command for your needs.`
 			}
 		}
 
-		if getYesNoResponse(reader, "\nWould you like to convert specific accounts? (y/n, default: all accounts): ") {
-			fmt.Print("Enter account numbers separated by commas (e.g., 1,3,5): ")
-			numbersStr, _ := reader.ReadString('\n')
-			numbersStr = strings.TrimSpace(numbersStr)
+		// Transaction-related questions only asked if exporting transactions
+		if exportTransactions {
+			// If balance history is being generated, use that account for transactions too
+			if generateBalanceHistoryLocal {
+				selectedAccounts = balanceHistoryAccount
+				fmt.Printf("\nUsing balance history account (%s) for transaction export.\n", balanceHistoryAccount)
+			} else if getYesNoResponse(reader, "\nWould you like to convert specific accounts? (y/n, default: all accounts): ") {
+				fmt.Print("Enter account numbers separated by commas (e.g., 1,3,5): ")
+				numbersStr, _ := reader.ReadString('\n')
+				numbersStr = strings.TrimSpace(numbersStr)
 
-			// Convert selected numbers to account names
-			var selectedAccountNames []string
-			numbers := strings.Split(numbersStr, ",")
-			for _, numStr := range numbers {
-				numStr = strings.TrimSpace(numStr)
-				if num, err := strconv.Atoi(numStr); err == nil && num > 0 && num <= len(accountList) {
-					selectedAccountNames = append(selectedAccountNames, accountList[num-1])
+				// Convert selected numbers to account names
+				var selectedAccountNames []string
+				numbers := strings.Split(numbersStr, ",")
+				for _, numStr := range numbers {
+					numStr = strings.TrimSpace(numStr)
+					if num, err := strconv.Atoi(numStr); err == nil && num > 0 && num <= len(accountList) {
+						selectedAccountNames = append(selectedAccountNames, accountList[num-1])
+					}
 				}
-			}
 
-			if len(selectedAccountNames) > 0 {
-				selectedAccounts = strings.Join(selectedAccountNames, ",")
-				fmt.Println("\nSelected accounts:")
-				for _, name := range selectedAccountNames {
-					fmt.Printf("  - %s\n", name)
+				if len(selectedAccountNames) > 0 {
+					selectedAccounts = strings.Join(selectedAccountNames, ",")
+					fmt.Println("\nSelected accounts:")
+					for _, name := range selectedAccountNames {
+						fmt.Printf("  - %s\n", name)
+					}
+				} else {
+					fmt.Println("\nNo valid account numbers entered. Processing all accounts.")
 				}
-			} else {
-				fmt.Println("\nNo valid account numbers entered. Processing all accounts.")
 			}
 		}
 
-		// Ask about date filtering
-		if getYesNoResponse(reader, "\nDo you want to filter by date range? (y/n): ") {
-			startDate, endDate = getValidatedDateRange(reader)
+		// Ask about date filtering for both transaction and balance history exports
+		if exportTransactions || generateBalanceHistoryLocal {
+			if getYesNoResponse(reader, "\nDo you want to filter by date range? (y/n): ") {
+				startDate, endDate = getValidatedDateRange(reader)
+			}
 		}
 
 		// Ask about output format (balance history is already captured earlier)
-		fmt.Print("\nWhat format would you like the output in?\n")
-		fmt.Println("1. CSV (spreadsheet format, works with Excel) [default]")
-		fmt.Println("2. JSON (technical format)")
-		fmt.Println("3. XML (technical format)")
-		fmt.Print("Choose a number (1-3): ")
-		formatChoice, _ := reader.ReadString('\n')
-		formatChoice = strings.TrimSpace(formatChoice)
-
-		switch formatChoice {
-		case "2":
-			outputFormat = "JSON"
-		case "3":
-			outputFormat = "XML"
-		default:
-			outputFormat = "CSV"
-		}
-
-		// Ask about mapping files
+		// Output format only relevant for transaction export
 		var categoryMapFile, payeeMapFile, accountMapFile, tagMapFile string
 
-		if getYesNoResponse(reader, "\nWould you like to apply mapping files to transform data? (y/n): ") {
-			fmt.Print("\nCategory mapping file (enter file path, or press Enter to skip): ")
-			mapPath, _ := reader.ReadString('\n')
-			mapPath = strings.TrimSpace(mapPath)
-			mapPath = strings.TrimPrefix(mapPath, "& ")
-			mapPath = strings.Trim(mapPath, "'\"")
-			if mapPath != "" {
-				absMapPath := filepath.Clean(mapPath)
-				if !filepath.IsAbs(absMapPath) {
-					var err error
-					absMapPath, err = filepath.Abs(absMapPath)
-					if err == nil {
+		if exportTransactions {
+			fmt.Print("\nWhat format would you like the output in?\n")
+			fmt.Println("1. CSV (spreadsheet format, works with Excel) [default]")
+			fmt.Println("2. JSON (technical format)")
+			fmt.Println("3. XML (technical format)")
+			fmt.Print("Choose a number (1-3): ")
+			formatChoice, _ := reader.ReadString('\n')
+			formatChoice = strings.TrimSpace(formatChoice)
+
+			switch formatChoice {
+			case "2":
+				outputFormat = "JSON"
+			case "3":
+				outputFormat = "XML"
+			default:
+				outputFormat = "CSV"
+			}
+
+			// Ask about mapping files
+			if getYesNoResponse(reader, "\nWould you like to apply mapping files to transform data? (y/n): ") {
+				fmt.Print("\nCategory mapping file (enter file path, or press Enter to skip): ")
+				mapPath, _ := reader.ReadString('\n')
+				mapPath = strings.TrimSpace(mapPath)
+				mapPath = strings.TrimPrefix(mapPath, "& ")
+				mapPath = strings.Trim(mapPath, "'\"")
+				if mapPath != "" {
+					absMapPath := filepath.Clean(mapPath)
+					if !filepath.IsAbs(absMapPath) {
+						var err error
+						absMapPath, err = filepath.Abs(absMapPath)
+						if err == nil {
+							categoryMapFile = absMapPath
+						}
+					} else {
 						categoryMapFile = absMapPath
 					}
-				} else {
-					categoryMapFile = absMapPath
 				}
-			}
 
-			fmt.Print("Payee mapping file (enter file path, or press Enter to skip): ")
-			mapPath, _ = reader.ReadString('\n')
-			mapPath = strings.TrimSpace(mapPath)
-			mapPath = strings.TrimPrefix(mapPath, "& ")
-			mapPath = strings.Trim(mapPath, "'\"")
-			if mapPath != "" {
-				absMapPath := filepath.Clean(mapPath)
-				if !filepath.IsAbs(absMapPath) {
-					var err error
-					absMapPath, err = filepath.Abs(absMapPath)
-					if err == nil {
+				fmt.Print("Payee mapping file (enter file path, or press Enter to skip): ")
+				mapPath, _ = reader.ReadString('\n')
+				mapPath = strings.TrimSpace(mapPath)
+				mapPath = strings.TrimPrefix(mapPath, "& ")
+				mapPath = strings.Trim(mapPath, "'\"")
+				if mapPath != "" {
+					absMapPath := filepath.Clean(mapPath)
+					if !filepath.IsAbs(absMapPath) {
+						var err error
+						absMapPath, err = filepath.Abs(absMapPath)
+						if err == nil {
+							payeeMapFile = absMapPath
+						}
+					} else {
 						payeeMapFile = absMapPath
 					}
-				} else {
-					payeeMapFile = absMapPath
 				}
-			}
 
-			fmt.Print("Account mapping file (enter file path, or press Enter to skip): ")
-			mapPath, _ = reader.ReadString('\n')
-			mapPath = strings.TrimSpace(mapPath)
-			mapPath = strings.TrimPrefix(mapPath, "& ")
-			mapPath = strings.Trim(mapPath, "'\"")
-			if mapPath != "" {
-				absMapPath := filepath.Clean(mapPath)
-				if !filepath.IsAbs(absMapPath) {
-					var err error
-					absMapPath, err = filepath.Abs(absMapPath)
-					if err == nil {
+				fmt.Print("Account mapping file (enter file path, or press Enter to skip): ")
+				mapPath, _ = reader.ReadString('\n')
+				mapPath = strings.TrimSpace(mapPath)
+				mapPath = strings.TrimPrefix(mapPath, "& ")
+				mapPath = strings.Trim(mapPath, "'\"")
+				if mapPath != "" {
+					absMapPath := filepath.Clean(mapPath)
+					if !filepath.IsAbs(absMapPath) {
+						var err error
+						absMapPath, err = filepath.Abs(absMapPath)
+						if err == nil {
+							accountMapFile = absMapPath
+						}
+					} else {
 						accountMapFile = absMapPath
 					}
-				} else {
-					accountMapFile = absMapPath
 				}
-			}
 
-			fmt.Print("Tag mapping file (enter file path, or press Enter to skip): ")
-			mapPath, _ = reader.ReadString('\n')
-			mapPath = strings.TrimSpace(mapPath)
-			mapPath = strings.TrimPrefix(mapPath, "& ")
-			mapPath = strings.Trim(mapPath, "'\"")
-			if mapPath != "" {
-				absMapPath := filepath.Clean(mapPath)
-				if !filepath.IsAbs(absMapPath) {
-					var err error
-					absMapPath, err = filepath.Abs(absMapPath)
-					if err == nil {
+				fmt.Print("Tag mapping file (enter file path, or press Enter to skip): ")
+				mapPath, _ = reader.ReadString('\n')
+				mapPath = strings.TrimSpace(mapPath)
+				mapPath = strings.TrimPrefix(mapPath, "& ")
+				mapPath = strings.Trim(mapPath, "'\"")
+				if mapPath != "" {
+					absMapPath := filepath.Clean(mapPath)
+					if !filepath.IsAbs(absMapPath) {
+						var err error
+						absMapPath, err = filepath.Abs(absMapPath)
+						if err == nil {
+							tagMapFile = absMapPath
+						}
+					} else {
 						tagMapFile = absMapPath
 					}
-				} else {
-					tagMapFile = absMapPath
 				}
 			}
 		}
@@ -281,39 +305,61 @@ It will ask you questions and help you create the right command for your needs.`
 		fmt.Println("\nGreat! I'm ready to convert your file. Here's what I'm going to do:")
 		fmt.Printf("- Read from: %s\n", inputFile)
 		fmt.Printf("- Save to: %s\n", outputPath)
-		if selectedAccounts != "" {
-			fmt.Printf("- Convert these accounts: %s\n", selectedAccounts)
-		} else {
-			fmt.Println("- Convert all accounts")
+
+		if exportTransactions {
+			fmt.Println("- Export type: Transactions")
+			if selectedAccounts != "" {
+				fmt.Printf("  • Accounts: %s\n", selectedAccounts)
+			} else {
+				fmt.Println("  • Accounts: All accounts")
+			}
 		}
-		if startDate != "" || endDate != "" {
-			fmt.Printf("- Date range: %s to %s\n",
-				ifEmpty(startDate, "beginning"),
-				ifEmpty(endDate, "end"))
-		}
-		fmt.Printf("- Output format: %s\n", outputFormat)
 
 		if generateBalanceHistoryLocal {
-			if isBalanceHistoryOpening {
-				fmt.Printf("- Generate balance history (opening balance: %s)\n", balanceHistoryValue)
-			} else {
-				fmt.Printf("- Generate balance history (current balance: %s)\n", balanceHistoryValue)
+			fmt.Println("- Export type: Balance history")
+			fmt.Printf("  • Account: %s\n", balanceHistoryAccount)
+		}
+
+		if exportTransactions && generateBalanceHistoryLocal {
+			fmt.Println("Note: Both transaction and balance history exports will be created")
+		}
+
+		if exportTransactions {
+			if startDate != "" || endDate != "" {
+				fmt.Printf("- Date range: %s to %s\n",
+					ifEmpty(startDate, "beginning"),
+					ifEmpty(endDate, "end"))
+			}
+			fmt.Printf("- Output format: %s\n", outputFormat)
+
+			if categoryMapFile != "" || payeeMapFile != "" || accountMapFile != "" || tagMapFile != "" {
+				fmt.Println("- Mappings to apply:")
+				if categoryMapFile != "" {
+					fmt.Printf("  • Categories: %s\n", categoryMapFile)
+				}
+				if payeeMapFile != "" {
+					fmt.Printf("  • Payees: %s\n", payeeMapFile)
+				}
+				if accountMapFile != "" {
+					fmt.Printf("  • Accounts: %s\n", accountMapFile)
+				}
+				if tagMapFile != "" {
+					fmt.Printf("  • Tags: %s\n", tagMapFile)
+				}
 			}
 		}
 
-		if categoryMapFile != "" || payeeMapFile != "" || accountMapFile != "" || tagMapFile != "" {
-			fmt.Println("- Mappings to apply:")
-			if categoryMapFile != "" {
-				fmt.Printf("  • Categories: %s\n", categoryMapFile)
+		if generateBalanceHistoryLocal {
+			fmt.Println("- Balance history details:")
+			if isBalanceHistoryOpening {
+				fmt.Printf("  • Opening balance: %s\n", balanceHistoryValue)
+			} else {
+				fmt.Printf("  • Current balance: %s\n", balanceHistoryValue)
 			}
-			if payeeMapFile != "" {
-				fmt.Printf("  • Payees: %s\n", payeeMapFile)
-			}
-			if accountMapFile != "" {
-				fmt.Printf("  • Accounts: %s\n", accountMapFile)
-			}
-			if tagMapFile != "" {
-				fmt.Printf("  • Tags: %s\n", tagMapFile)
+			if startDate != "" || endDate != "" {
+				fmt.Printf("  • Date range: %s to %s\n",
+					ifEmpty(startDate, "beginning"),
+					ifEmpty(endDate, "end"))
 			}
 		}
 
@@ -361,8 +407,10 @@ It will ask you questions and help you create the right command for your needs.`
 			transactionArgs = append(transactionArgs, "--tagMapFile", tagMapFile)
 		}
 
-		rootCmd.SetArgs(transactionArgs)
-		rootCmd.Execute()
+		if exportTransactions {
+			rootCmd.SetArgs(transactionArgs)
+			rootCmd.Execute()
+		}
 
 		// Generate balance history if requested
 		if generateBalanceHistoryLocal && balanceHistoryAccount != "" {

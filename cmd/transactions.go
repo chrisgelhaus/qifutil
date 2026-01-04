@@ -430,6 +430,8 @@ MAPPING FILES:
 					day := strings.TrimSpace(t[2])
 					year := strings.TrimSpace(t[4])
 					amount1 := strings.TrimSpace(t[6])
+					// Remove commas from amount for compatibility (e.g., "1,234.56" -> "1234.56")
+					amount1 = strings.ReplaceAll(amount1, ",", "")
 					//amount2 := strings.TrimSpace(t[8])
 					//cleared := strings.TrimSpace(t[10])
 					//number := strings.TrimSpace(t[13])
