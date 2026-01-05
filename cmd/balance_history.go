@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"qifutil/pkg/utils"
 )
 
 var generateBalanceHistory bool
@@ -137,6 +138,9 @@ TIPS:
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Starting balance history generation...")
 
+		// Initialize validation tracker
+		validator := utils.NewValidationTracker()
+
 		// Ensure we have a valid output path
 		if outputPath == "" {
 			fmt.Println("Error: No output path specified")
@@ -253,6 +257,12 @@ TIPS:
 				if err != nil {
 					fmt.Printf("Warning: Could not parse amount '%s' in transaction\n", amount)
 					continue
+				}
+
+				// Validation tracking
+				validator.RecordTransaction()
+				if amountFloat == 0.0 {
+					validator.AddZeroAmount()
 				}
 
 				// Format date
@@ -419,6 +429,9 @@ TIPS:
 			fmt.Printf("Split files: %d records per file\n", maxRecordsPerFile)
 		}
 		fmt.Println("\nBalance history generation completed successfully!")
+
+		// Print validation summary
+		validator.PrintSummary()
 	},
 }
 

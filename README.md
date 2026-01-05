@@ -1,10 +1,11 @@
 # QIFUTIL
 
-**Latest Update (v1.8.2):** Smart wizard flow, improved amount formatting, and balance history enhancements!
-- ✨ **Enhanced Wizard** - Smarter flow that eliminates redundant prompts. When selecting "Both" exports, balance history account is automatically used for transactions. Date range filtering now available for all export types including balance history only.
-- 🐛 **Amount Formatting Fixed** - Transaction amounts now export without commas (e.g., "1234.56" instead of "1,234.56") for maximum compatibility with other systems
-- ✨ **Balance History Improvements** - Full date range filtering support for balance-history-only exports
-- 📋 **Previous (v1.8.0):** Major wizard improvements with new balance history export feature, improved input validation, and bug fixes
+**Latest Update (v1.8.4):** Standardized amount formatting and output improvements!
+- 💰 **Standardized Amount Formatting** - All transaction and balance history amounts now export with exactly 2 decimal places (e.g., 1.5 → 1.50, 45 → 45.00) for maximum consistency across all systems and formats.
+- 🎯 **Required Output Path** - Wizard now requires explicit output directory entry, eliminating hardcoded local paths that shouldn't be in version control.
+- ⚠️ **Data Validation Warnings** - Automatic detection and reporting of data quality issues: missing payees/categories, zero amounts, duplicate transactions, unused mapping data.
+- 💾 **Config File Support** - Save and reuse wizard settings for faster repeated exports.
+- 📋 **Previous (v1.8.2):** Smart wizard flow, improved amount formatting, and balance history enhancements
 
 Core features: Export commands respect the `--outputPath` flag, mapping files fully integrated into wizard, improved category/tag splitting, fixed GitHub Actions build pipeline, US-formatted numbers (with commas) now properly handled throughout.
 
@@ -440,6 +441,89 @@ The test suite covers:
 - Utility functions
 
 ## Recent Improvements
+
+### ✅ Standardized Amount Formatting (v1.8.4)
+**Enhancement:** All exported amounts now use consistent 2-decimal formatting.
+
+**Changes:**
+- **Transaction CSV exports:** All amounts now formatted with exactly 2 decimal places
+- **Balance history CSV exports:** Already formatted with 2 decimals, now consistent with transactions
+- **All output formats:** CSV, JSON, and XML all maintain standardized formatting
+- **Negative amounts:** Handled correctly (e.g., -1234.5 → -1234.50)
+
+**Examples:**
+```
+Before: 1, 45.2, 1234.5, -99
+After:  1.00, 45.20, 1234.50, -99.00
+```
+
+**Result:** Better data quality and compatibility with all downstream systems that expect precise decimal formatting.
+
+### ✅ Required Output Path (v1.8.4)
+**Enhancement:** Wizard now requires explicit output directory specification.
+
+**Changes:**
+- Removed default output folder fallback
+- Wizard will not proceed until valid output path is provided
+- Prevents accidental hardcoded local paths in exports
+- Better control over export destination
+
+**Result:** Cleaner exports without machine-specific paths that shouldn't be shared.
+
+### ✅ Data Validation Warnings (v1.8.3)
+**Enhancement:** Automatic detection and reporting of data quality issues during export.
+
+**What Gets Tracked:**
+- **Missing Payees** - Transactions where payee/merchant is empty
+- **Missing Categories** - Transactions without assigned categories
+- **Zero Amounts** - Transactions with zero dollar amounts
+- **Duplicate Transactions** - Detection of possible duplicate records
+- **Unmapped Data** - Transactions using unmapped payees/categories when mapping files are applied
+- **Unused Mappings** - Mapping file entries that weren't used (unnecessary mappings)
+
+**How to Use:**
+Simply run the wizard or export command as usual. After export completes, you'll see a validation summary:
+```
+========== VALIDATION SUMMARY ==========
+Total transactions processed: 1,250
+Missing payees: 3
+Missing categories: 5
+Zero amounts: 0
+Duplicate transactions: 2
+=========================================
+```
+
+**Result:** Identify data quality issues at a glance and refine your data or mappings as needed.
+
+### ✅ Config File Support (v1.8.3)
+**Enhancement:** The wizard now saves and loads configuration settings for faster repeated exports.
+
+**How to Use:**
+1. First time: Run `qifutil wizard` and configure your settings (input file, output path, accounts, mappings, etc.)
+2. After export completes, wizard asks: "Would you like to save these settings? (y/n)"
+3. Next time: Run `qifutil wizard` and it automatically offers to load your previous configuration
+4. Accept to use saved settings, or decline to enter new ones
+
+**Benefits:**
+- No more re-entering the same file paths and settings
+- Settings saved as JSON in your output directory (`wizard_config.json`)
+- Manual editing of config file supported for advanced users
+- Different configs for different export scenarios (you can save with different output paths)
+
+**Example Config File (wizard_config.json):**
+```json
+{
+  "inputFile": "C:\\Users\\MyUser\\Documents\\MyData.QIF",
+  "outputPath": "C:\\Users\\MyUser\\Documents\\Exports",
+  "selectedAccounts": "Checking Account,Savings Account",
+  "exportType": "both",
+  "outputFormat": "CSV",
+  "categoryMapFile": "C:\\mappings\\categories.csv",
+  "payeeMapFile": "C:\\mappings\\payees.csv"
+}
+```
+
+**Result:** Faster, more efficient exports with a single configuration for your regular data migration needs.
 
 ### ✅ Smart Wizard Flow (v1.8.2)
 **Enhancement:** The wizard now eliminates redundant questions for a smoother user experience.

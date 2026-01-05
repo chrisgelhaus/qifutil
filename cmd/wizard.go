@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"qifutil/pkg/config"
+
 	"github.com/spf13/cobra"
 )
 
@@ -26,6 +28,37 @@ It will ask you questions and help you create the right command for your needs.`
 		fmt.Println("\n=== QIFUTIL Conversion Wizard ===")
 		fmt.Println("\nThis wizard will help you convert your Quicken (QIF) file.")
 		fmt.Println("Press Enter after each response.")
+
+		// Check if user wants to load a previous config
+		var savedConfig *config.WizardConfig
+		if getYesNoResponse(reader, "\nWould you like to load a previous configuration? (y/n): ") {
+			fmt.Print("Enter the config file path (or press Enter to skip): ")
+			configPath, _ := reader.ReadString('\n')
+			configPath = strings.TrimSpace(configPath)
+			configPath = strings.TrimPrefix(configPath, "& ")
+			configPath = strings.Trim(configPath, "'\"")
+
+			if configPath != "" {
+				cleanConfigPath := filepath.Clean(configPath)
+				if !filepath.IsAbs(cleanConfigPath) {
+					var err error
+					cleanConfigPath, err = filepath.Abs(cleanConfigPath)
+					if err == nil {
+						configPath = cleanConfigPath
+					}
+				}
+
+				var err error
+				savedConfig, err = config.LoadConfig(configPath)
+				if err != nil {
+					fmt.Printf("Warning: Could not load config: %v\n", err)
+					savedConfig = nil
+				} else {
+					fmt.Println("\n✓ Configuration loaded successfully!")
+					fmt.Println(savedConfig.String())
+				}
+			}
+		}
 
 		// Get input file
 		fmt.Print("\nStep 1: Where is your QIF file? (Enter the file path): ")
@@ -54,15 +87,15 @@ It will ask you questions and help you create the right command for your needs.`
 		}
 
 		// Get output location
-		defaultOutput := filepath.Join(filepath.Dir(cleanInputPath), "Exported")
-		fmt.Printf("\nStep 2: Where should I save the converted files? (Press Enter for default: %s): ", defaultOutput)
+		fmt.Print("\nStep 2: Where should I save the converted files? (e.g., C:\\export\\): ")
 		outputPath, _ := reader.ReadString('\n')
 		outputPath = strings.TrimSpace(outputPath)
 		outputPath = strings.TrimPrefix(outputPath, "& ") // Remove PowerShell invoke operator
 		outputPath = strings.Trim(outputPath, "'\"")      // Remove quotes
 
 		if outputPath == "" {
-			outputPath = defaultOutput
+			fmt.Println("Output path is required. Please provide a valid directory path.")
+			return
 		}
 
 		// Clean and convert to absolute path
@@ -439,6 +472,46 @@ It will ask you questions and help you create the right command for your needs.`
 
 			rootCmd.SetArgs(balanceHistoryArgs)
 			rootCmd.Execute()
+		}
+
+		// Offer to save configuration for future use
+		fmt.Println("\nConversion completed!")
+		if getYesNoResponse(reader, "\nWould you like to save this configuration for future use? (y/n): ") {
+			fmt.Print("Enter a filename for the config (or press Enter for default 'wizard-config.json'): ")
+			configFilename, _ := reader.ReadString('\n')
+			configFilename = strings.TrimSpace(configFilename)
+			if configFilename == "" {
+				configFilename = "wizard-config.json"
+			}
+
+			// Save to output directory
+			configPath := filepath.Join(outputPath, configFilename)
+
+			cfg := &config.WizardConfig{
+				InputFile:             inputFile,
+				OutputPath:            outputPath,
+				ExportTransactions:    exportTransactions,
+				ExportBalanceHistory:  generateBalanceHistoryLocal,
+				BalanceHistoryAccount: balanceHistoryAccount,
+				BalanceHistoryOpening: isBalanceHistoryOpening,
+				BalanceHistoryValue:   balanceHistoryValue,
+				SelectedAccounts:      selectedAccounts,
+				StartDate:             startDate,
+				EndDate:               endDate,
+				OutputFormat:          outputFormat,
+				CategoryMapFile:       categoryMapFile,
+				PayeeMapFile:          payeeMapFile,
+				AccountMapFile:        accountMapFile,
+				TagMapFile:            tagMapFile,
+				AddTagForImport:       addTagForImport,
+			}
+
+			if err := cfg.SaveConfig(configPath); err != nil {
+				fmt.Printf("Warning: Could not save config: %v\n", err)
+			} else {
+				fmt.Printf("✓ Configuration saved to: %s\n", configPath)
+				fmt.Println("\nYou can reload this config later with: qifutil wizard")
+			}
 		}
 	},
 }

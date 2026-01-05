@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -333,6 +334,9 @@ MAPPING FILES:
 			fmt.Println("No matches found.")
 		}
 
+		// Initialize validation tracker for all accounts
+		validator := utils.NewValidationTracker()
+
 		// loop over each account block and Find all transaction matches
 		for _, accountBlock := range accountBlocks {
 			// Extract the account name from the matched block
@@ -431,8 +435,14 @@ MAPPING FILES:
 					year := strings.TrimSpace(t[4])
 					amount1 := strings.TrimSpace(t[6])
 					// Remove commas from amount for compatibility (e.g., "1,234.56" -> "1234.56")
-					amount1 = strings.ReplaceAll(amount1, ",", "")
-					//amount2 := strings.TrimSpace(t[8])
+					amount1 = strings.ReplaceAll(amount1, ",", "")				
+				// Parse amount to float and format with exactly 2 decimal places
+				amountFloat, err := strconv.ParseFloat(amount1, 64)
+				if err != nil {
+					fmt.Printf("Warning: Could not parse amount '%s', using as-is\n", amount1)
+				} else {
+					amount1 = fmt.Sprintf("%.2f", amountFloat)
+				}					//amount2 := strings.TrimSpace(t[8])
 					//cleared := strings.TrimSpace(t[10])
 					//number := strings.TrimSpace(t[13])
 
@@ -487,6 +497,18 @@ MAPPING FILES:
 						if transDate.After(endDateTime) {
 							continue
 						}
+					}
+
+					// Validation tracking
+					validator.RecordTransaction()
+					if payee == "" {
+						validator.AddMissingPayee()
+					}
+					if category == "" {
+						validator.AddMissingCategory()
+					}
+					if amount1 == "0.00" || amount1 == "0" {
+						validator.AddZeroAmount()
 					}
 
 					record := TransactionRecord{
@@ -600,6 +622,9 @@ MAPPING FILES:
 			fmt.Printf("Split files: %d records per file (for Monarch compatibility)\n", maxRecordsPerFile)
 		}
 		fmt.Println("\nExport completed successfully!")
+
+		// Print validation summary
+		validator.PrintSummary()
 	},
 }
 
