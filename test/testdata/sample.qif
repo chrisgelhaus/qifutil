@@ -1,13 +1,53 @@
 !Type:Cat
 NFood:Groceries
 E
-NFood
+NFood:Dining
+E
+NFood:Groceries/Weekly
 E
 NTransportation:Fuel
 E
+NTransportation:Maintenance
+E
 NTravel:Air Travel
 E
-NFees & Charges
+NTravel:Hotels
+E
+NTravel:Ground Transport
+E
+NUtilities:Electric
+E
+NUtilities:Water
+E
+NUtilities:Internet
+E
+NMedical:Doctor
+E
+NMedical:Pharmacy
+E
+NShopping:Clothing
+E
+NShopping:Electronics
+E
+NShopping:Home
+E
+NSubscriptions:Software
+E
+NSubscriptions:Entertainment
+E
+NEntertainment:Movies
+E
+NEntertainment:Games
+E
+NIncome:Salary
+E
+NIncome:Bonus
+E
+NIncome:Freelance
+E
+NFees & Charges:Bank
+E
+NFees & Charges:Interest
 E
 ^
 !Account
@@ -15,6 +55,46 @@ NChecking Account
 TBank
 ^
 !Type:Bank
+D1/5'23
+U5000.00
+T5000.00
+CX
+PEmployee Payroll
+MMonthly salary deposit
+LIncome:Salary
+^
+D1/8'23
+U-45.23
+T-45.23
+CX
+PWhole Foods Market
+MWeekly groceries
+LFood:Groceries
+^
+D1/10'23
+U-35.50
+T-35.50
+CX
+PCOSTCO GAS STATION
+MFuel up - 12 gallons
+LTransportation:Fuel
+^
+D1/12'23
+U-162.06
+T-162.06
+CX
+PAlaska Airlines
+NAlaska Airlines
+LTravel:Air Travel
+^
+D1/15'23
+U-85.00
+T-85.00
+CX
+PDominios Pizza
+MMeal for family dinner
+LFood:Dining
+^
 D1/15'23
 U-45.23
 T-45.23
@@ -24,51 +104,424 @@ MFood shopping
 LFood:Groceries
 ^
 D1/17'23
-U-35.50
-T-35.50
+U-25.00
+T-25.00
 CX
-PGas Station
-MFuel up
-LTransportation:Fuel
+PCinemark Theater
+MMovie tickets and popcorn
+LEntertainment:Movies
 ^
 D1/20'23
-U-162.06
-T-162.06
+U-120.50
+T-120.50
 CX
-PAlaska Airlines
-NALASKA AIR
-LTravel:Air Travel
+PGE Utilities
+MElectricity bill
+LUtilities:Electric
 ^
 D1/22'23
 U-75.00
 T-75.00
 CX
 PAnnual Fee
-LAnnual Fee
+LFees & Charges:Bank
 ^
 D1/25'23
 U150.00
 T150.00
 CX
 PPaycheck
+LIncome:Salary
+^
+D2/2'23
+U-45.99
+T-45.99
+CX
+PBest Buy
+MSamsung USB drives
+LShopping:Electronics
+^
+D2/3'23
+U-55.00
+T-55.00
+CX
+PHome Depot
+MWall paint and supplies
+LShopping:Home
+^
+D2/5'23
+U5000.00
+T5000.00
+CX
+PEmployer Payroll
+MMonthly salary
+LIncome:Salary
+^
+D2/7'23
+U-28.50
+T-28.50
+CX
+PShell Gas Station
+MFuel up
+LTransportation:Fuel
+^
+D2/9'23
+U-180.00
+T-180.00
+CX
+PDr Smith Medical
+MRegular checkup
+LMedical:Doctor
+^
+D2/10'23
+U-35.00
+T-35.00
+CX
+PExpress Scripts Pharmacy
+MMaintenance medications
+LMedical:Pharmacy
+^
+D2/12'23
+U-95.50
+T-95.50
+CX
+PZappos Shoes
+MWork dress shoes
+LShopping:Clothing
+^
+D2/14'23
+U-12.99
+T-12.99
+CX
+PNetflix
+MMonthly streaming subscription
+LSubscriptions:Entertainment
+^
+D2/15'23
+U-42.00
+T-42.00
+CX
+POlive Garden Italian Restaurant
+MEvenings dinner
+LFood:Dining
+^
+D2/18'23
+U-250.00
+T-250.00
+CX
+PMariott Hotel
+NMariott Hotels
+MBusiness trip accommodation
+LTravel:Hotels
+^
+D2/20'23
+U-65.00
+T-65.00
+CX
+PUber
+MGround transportation
+LTravel:Ground Transport
+^
+D2/22'23
+U-38.50
+T-38.50
+CX
+PComcast Internet
+MInternet service bill
+LUtilities:Internet
+^
+D2/25'23
+U5000.00
+T5000.00
+CX
+PPayroll Deposit
+MMonthly salary
+LIncome:Salary
+^
+D2/28'23
+U-52.00
+T-52.00
+CX
+PBay Area Water
+MWater and sewage bill
+LUtilities:Water
+^
+D3/3'23
+U-125.00
+T-125.00
+CX
+PSwim Lessons Class
+MQuarterly swimming lesson
+LEntertainment:Games
+^
+D3/5'23
+U5000.00
+T5000.00
+CX
+PPaycheck Deposit
+MMonthly salary
+LIncome:Salary
+^
+D3/6'23
+U-45.23
+T-45.23
+CX
+PSafeway
+MWeekly groceries
+LFood:Groceries/Weekly
+^
+D3/8'23
+U-250.00
+T-250.00
+CX
+PBMW Auto Repair
+MMajor service - 60k miles
+LTransportation:Maintenance
+^
+D3/10'23
+U-67.50
+T-67.50
+CX
+PAdobe Creative Cloud
+MAnnual software subscription
+LSubscriptions:Software
+^
+D3/12'23
+U-890.00
+T-890.00
+CX
+PUnited Airlines
+NUnited
+LTravel:Air Travel
+^
+D3/15'23
+U-32.50
+T-32.50
+CX
+PChipotles
+MQuick lunch
+LFood:Dining
+^
+D3/18'23
+U-400.00
+T-400.00
+CX
+PFour Seasons Hotel
+LTravel:Hotels
+^
+D3/20'23
+U-5.99
+T-5.99
+CX
+PSpotify Premium
+MAnnual subscription
+LSubscriptions:Entertainment
+^
+D3/22'23
+U-88.00
+T-88.00
+CX
+PPG&E
+MElectricity bill
+LUtilities:Electric
+^
+D3/25'23
+U5000.00
+T5000.00
+CX
+PMonthly Payroll
+LIncome:Salary
+^
+^
+!Account
+NSavings Account
+TBank
+^
+!Type:Bank
+D1/5'23
+U500.00
+T500.00
+CX
+PMonthly Savings Transfer
+MAutomatic savings
 LIncome
+^
+D2/5'23
+U500.00
+T500.00
+CX
+PMonthly Savings Transfer
+MAutomatic savings
+LIncome
+^
+D3/5'23
+U500.00
+T500.00
+CX
+PMonthly Savings Transfer
+MAutomatic savings
+LIncome
+^
 ^
 !Account
 NCreditCard Account
 TCCard
 ^
 !Type:CCard
-D1/16'23
+D1/5'23
 U-120.00
 T-120.00
 CX
-POnline Purchase
-LShopping
+PAmazon
+MEarbuds and cables
+LShopping:Electronics
 ^
-D1/18'23
+D1/8'23
 U-45.99
 T-45.99
 CX
-PDining
-LFood
+PPandora Express
+MLunch order
+LFood:Dining
+^
+D1/12'23
+U-265.00
+T-265.00
+CX
+PHilton Hotel
+LTravel:Hotels
+^
+D1/15'23
+U-32.50
+T-32.50
+CX
+PBurger King
+MQuick dinner
+LFood:Dining
+^
+D1/18'23
+U-89.00
+T-89.00
+CX
+PRegal Cinemas
+NRegal Cinemas
+LEntertainment:Movies
+^
+D1/22'23
+U-150.00
+T-150.00
+CX
+PTarget
+MShopping groceries and household
+LShopping:Home
+^
+D2/1'23
+U-75.00
+T-75.00
+CX
+PPandora Music
+MMonthly music streaming
+LSubscriptions:Entertainment
+^
+D2/5'23
+U-540.00
+T-540.00
+CX
+PAir France Flight
+NAir France
+LTravel:Air Travel
+^
+D2/8'23
+U-42.50
+T-42.50
+CX
+PGain.com
+MOnline shopping - books
+LShopping:Clothing
+^
+D2/12'23
+U-185.00
+T-185.00
+CX
+PIntercontinental Hotel
+LTravel:Hotels
+^
+D2/15'23
+U-28.00
+T-28.00
+CX
+PSubway
+MLunch
+LFood:Dining
+^
+D2/18'23
+U-120.00
+T-120.00
+CX
+PUber Eats
+MFood delivery
+LFood:Dining
+^
+D2/21'23
+U-95.00
+T-95.00
+CX
+PBar Restaurant
+MMeal and drinks
+LFood:Dining
+^
+D3/2'23
+U-310.00
+T-310.00
+CX
+PJetBlue Airways
+LTravel:Air Travel
+^
+D3/5'23
+U-155.00
+T-155.00
+CX
+PWest Elm Furniture
+MSofa for living room
+LShopping:Home
+^
+D3/8'23
+U-22.50
+T-22.50
+CX
+PStarbucks Coffee
+MMorning coffee
+LFood:Dining
+^
+D3/10'23
+U-310.00
+T-310.00
+CX
+PLoyal Hotel Group
+LTravel:Hotels
+^
+D3/15'23
+U-59.99
+T-59.99
+CX
+PDoor Dash
+MFood delivery - Chinese
+LFood:Dining
+^
+D3/18'23
+U-45.00
+T-45.00
+CX
+PMuscle Fitness Gym
+MMonthly membership
+LEntertainment
+^
+D3/22'23
+U-78.50
+T-78.50
+CX
+PHulu Plus
+MMonthly streaming service
+LSubscriptions:Entertainment
+^
 ^
