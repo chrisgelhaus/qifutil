@@ -1,13 +1,14 @@
 # QIFUTIL
 
-**Latest Update (v1.8.4):** Standardized amount formatting and output improvements!
-- 💰 **Standardized Amount Formatting** - All transaction and balance history amounts now export with exactly 2 decimal places (e.g., 1.5 → 1.50, 45 → 45.00) for maximum consistency across all systems and formats.
-- 🎯 **Required Output Path** - Wizard now requires explicit output directory entry, eliminating hardcoded local paths that shouldn't be in version control.
-- ⚠️ **Data Validation Warnings** - Automatic detection and reporting of data quality issues: missing payees/categories, zero amounts, duplicate transactions, unused mapping data.
-- 💾 **Config File Support** - Save and reuse wizard settings for faster repeated exports.
-- 📋 **Previous (v1.8.2):** Smart wizard flow, improved amount formatting, and balance history enhancements
+**Latest Update (v1.9.0):** Improved QIF parsing, validation logging, and mapping reliability!
+- 📊 **Enhanced QIF Compatibility** - Fixed regex to properly handle real Quicken exports where payee fields are optional, now captures 100% of transactions
+- 🔍 **Detailed Validation Logging** - Transaction-specific validation logs show exactly which transactions have issues (zero amounts, missing data, etc.)
+- ✨ **Mapping File Robustness** - Fixed mapping files to skip empty entries created by Excel, preventing data loss
+- 🚀 **Zero-Amount Filtering** - New `--skipZeroAmounts` flag to exclude zero transactions with detailed reporting
+- 💾 **Better Config Flow** - Skip redundant save prompts when reusing loaded configurations
+- 📋 **Previous (v1.8.4):** Standardized amount formatting, data validation warnings, config file support
 
-Core features: Export commands respect the `--outputPath` flag, mapping files fully integrated into wizard, improved category/tag splitting, fixed GitHub Actions build pipeline, US-formatted numbers (with commas) now properly handled throughout.
+Core improvements: Better real-world QIF support, more reliable parsing, improved mapping file handling, detailed validation reporting for debugging data issues.
 
 ## Quick Start Guide
 
@@ -28,6 +29,7 @@ The wizard will guide you through:
 - Setting date ranges with validation (YYYY-MM-DD format)
 - Optionally generating balance history for Monarch Money
 - Choosing output format (CSV/JSON/XML)
+- Optionally skipping zero-amount transactions
 - Applying optional mapping files to standardize your data
 
 4. Or use command-line options for more control:
@@ -35,8 +37,8 @@ The wizard will guide you through:
 # Basic conversion - creates CSV files for each account
 qifutil transactions --inputFile "C:\Users\YourName\Downloads\MyData.QIF" --outputPath "C:\Users\YourName\Documents\Exported\"
 
-# With account mapping file
-qifutil transactions --inputFile "MyData.QIF" --outputPath "export/" --accountMapFile "account_mappings.csv"
+# With account mapping file and skip zero amounts
+qifutil transactions --inputFile "MyData.QIF" --outputPath "export/" --accountMapFile "account_mappings.csv" --skipZeroAmounts
 
 # Just see what accounts are in your file
 qifutil list accounts --inputFile "C:\Users\YourName\Downloads\MyData.QIF"
@@ -56,6 +58,7 @@ QIFUTIL is a utility for exporting financial data from Quicken in QIF format. Th
   - Guided process for all options with input validation
   - Optional balance history generation for Monarch Money
   - Optional mapping files to standardize data
+  - Zero-amount transaction filtering option
 - Smart file handling
   - Automatic file splitting for Monarch compatibility (5000 records per file)
   - Preserves headers in split files
@@ -71,18 +74,22 @@ QIFUTIL is a utility for exporting financial data from Quicken in QIF format. Th
   - Rename payees for consistency
   - Standardize account names
   - Transform tag values
+  - Robust handling - empty mapping entries are safely skipped
 - Flexible filtering
   - Select specific accounts to export
   - Filter by date range with validation
+  - Skip zero-amount transactions with detailed reporting
   - Apply mappings to transform extracted data
 - Analysis tools
   - Account statistics and analysis
   - List and explore available accounts
   - Transaction summaries
-- Improved validation
+- Validation & Debugging
+  - Detailed validation logs showing specific problematic transactions
+  - Separate logs for transactions and balance history
+  - Reports on missing payees, categories, zero amounts
   - Yes/no prompts with clear input handling
   - Date range validation (start date ≤ end date)
-  - Balance history with forward/backward calculation modes
 
 ## Usage
 
@@ -152,17 +159,22 @@ You can customize your transaction export with the following options:
 - `--accounts`: Comma-separated list of accounts to export (e.g., "Checking,Savings")
 - `--startDate`: Filter transactions from this date (YYYY-MM-DD)
 - `--endDate`: Filter transactions until this date (YYYY-MM-DD)
-- `--outputFormat`: Choose CSV (default), JSON, or XML
+- `--outputFormat`: Choose CSV (default), JSON, XML, or MONARCH
+- `--skipZeroAmounts`: Skip transactions with zero amount (0.00 or 0) - useful for cleaning data
 - `--categoryMapFile`: Map categories using a CSV file
 - `--accountMapFile`: Map account names using a CSV file
 - `--payeeMapFile`: Map payee names using a CSV file
 - `--tagMapFile`: Map tags using a CSV file
+- `--csvColumns`: Custom column order for CSV output (advanced)
 
 The tool automatically:
 - Splits large files into chunks of 5000 records for Monarch compatibility
 - Adds headers to each split file
 - Names files consistently with account and part number
 - Shows progress and record ranges for split files
+- Generates validation logs with specific problematic transactions
+
+Examples:
 
 - Filter by accounts:
 ```sh
