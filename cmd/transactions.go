@@ -30,6 +30,7 @@ var outputPath string
 var startDate string
 var endDate string
 var addTagForImport bool = false
+var skipZeroAmounts bool = false
 var maxRecordsPerFile int = 5000
 var csvColumns string
 
@@ -393,17 +394,18 @@ MAPPING FILES:
 			fmt.Printf("\nProcessing %s (File %d)\n", accountName, fileIndex)
 
 			fullPath := filepath.Join(outputPath, outputFileName)
-			if _, err := os.Stat(fullPath); err == nil {
-				fmt.Printf("Warning: Overwriting existing file: %s\n", outputFileName)
-			}
-
 			outputFile, err := os.Create(fullPath)
 			if err != nil {
 				fmt.Printf("Error creating file %s: %v\n", outputFileName, err)
 				return
 			}
 			if strings.ToUpper(outputFormat) == "XML" {
-				outputFile.WriteString(xml.Header)
+				_, err := outputFile.WriteString(xml.Header)
+				if err != nil {
+					outputFile.Close()
+					fmt.Printf("Error: failed to write XML header to %s: %v\n", outputFileName, err)
+					return
+				}
 			}
 			if strings.ToUpper(outputFormat) == "CSV" {
 				if err := writeHeader(outputFile, outputCSVHeader); err != nil {
@@ -519,6 +521,11 @@ MAPPING FILES:
 					if amount1 == "0.00" || amount1 == "0" {
 						validator.AddZeroAmount()
 						validator.RecordTransactionIssue(fullDate, payee, amount1, category, "ZeroAmount")
+						// Skip this transaction if the skipZeroAmounts flag is set
+						if skipZeroAmounts {
+							validator.AddSkippedZeroAmount()
+							continue
+						}
 					}
 
 					record := TransactionRecord{
@@ -548,14 +555,30 @@ MAPPING FILES:
 						// Close current file
 						if strings.ToUpper(outputFormat) == "JSON" {
 							jsonData, err := json.MarshalIndent(records, "", "  ")
-							if err == nil {
-								outputFile.Write(jsonData)
+							if err != nil {
+								outputFile.Close()
+								fmt.Printf("Error: failed to marshal JSON data: %v\n", err)
+								return
+							}
+							_, err = outputFile.Write(jsonData)
+							if err != nil {
+								outputFile.Close()
+								fmt.Printf("Error: failed to write JSON data to file: %v\n", err)
+								return
 							}
 							records = nil
 						} else if strings.ToUpper(outputFormat) == "XML" {
 							xmlData, err := xml.MarshalIndent(transactionList{Transactions: records}, "", "  ")
-							if err == nil {
-								outputFile.Write(xmlData)
+							if err != nil {
+								outputFile.Close()
+								fmt.Printf("Error: failed to marshal XML data: %v\n", err)
+								return
+							}
+							_, err = outputFile.Write(xmlData)
+							if err != nil {
+								outputFile.Close()
+								fmt.Printf("Error: failed to write XML data to file: %v\n", err)
+								return
 							}
 							records = nil
 						}
@@ -579,7 +602,12 @@ MAPPING FILES:
 
 						// Write appropriate headers for the new file
 						if strings.ToUpper(outputFormat) == "XML" {
-							outputFile.WriteString(xml.Header)
+							_, err := outputFile.WriteString(xml.Header)
+							if err != nil {
+								outputFile.Close()
+								fmt.Printf("Error: failed to write XML header to split file %s: %v\n", outputFileName, err)
+								return
+							}
 						}
 						if strings.ToUpper(outputFormat) == "CSV" {
 							if err := writeHeader(outputFile, outputCSVHeader); err != nil {
@@ -594,14 +622,30 @@ MAPPING FILES:
 			}
 			if strings.ToUpper(outputFormat) == "JSON" && len(records) > 0 {
 				jsonData, err := json.MarshalIndent(records, "", "  ")
-				if err == nil {
-					outputFile.Write(jsonData)
+				if err != nil {
+					outputFile.Close()
+					fmt.Printf("Error: failed to marshal final JSON data: %v\n", err)
+					return
+				}
+				_, err = outputFile.Write(jsonData)
+				if err != nil {
+					outputFile.Close()
+					fmt.Printf("Error: failed to write final JSON data to file: %v\n", err)
+					return
 				}
 				records = nil
 			} else if strings.ToUpper(outputFormat) == "XML" && len(records) > 0 {
 				xmlData, err := xml.MarshalIndent(transactionList{Transactions: records}, "", "  ")
-				if err == nil {
-					outputFile.Write(xmlData)
+				if err != nil {
+					outputFile.Close()
+					fmt.Printf("Error: failed to marshal final XML data: %v\n", err)
+					return
+				}
+				_, err = outputFile.Write(xmlData)
+				if err != nil {
+					outputFile.Close()
+					fmt.Printf("Error: failed to write final XML data to file: %v\n", err)
+					return
 				}
 				records = nil
 			}
@@ -656,6 +700,7 @@ func init() {
 	transactionsCmd.Flags().StringVarP(&tagMappingFile, "tagMapFile", "t", "", "Supplied mapping file for tags. Optional.")
 	transactionsCmd.Flags().IntVarP(&maxRecordsPerFile, "recordsPerFile", "r", 5000, "Optional. Maximum number of records per CSV file. Default is 5000. If set to 0, all records will be written to a single file.")
 	transactionsCmd.Flags().BoolVarP(&addTagForImport, "addTagForImport", "", true, "Add a custom tag to the transaction for import purposes")
+	transactionsCmd.Flags().BoolVarP(&skipZeroAmounts, "skipZeroAmounts", "", false, "Skip transactions with zero amount (0.00 or 0)")
 
 	// Mark the shared required flags as required for this command
 	transactionsCmd.MarkPersistentFlagRequired("inputFile")
