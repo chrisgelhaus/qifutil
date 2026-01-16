@@ -2,6 +2,8 @@ package utils
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -10,9 +12,11 @@ type ValidationTracker struct {
 	mu sync.Mutex
 
 	// Transaction issues
-	MissingPayees   int
-	MissingCategory int
-	ZeroAmounts     int
+	MissingPayees     int
+	MissingCategory   int
+	ZeroAmounts       int
+	SkippedZeroAmount int
+	TransactionIssues []TransactionIssue // Detailed transaction issues
 
 	// Duplicates (same date, payee, amount)
 	DuplicateTransactions []DuplicateWarning
@@ -24,6 +28,15 @@ type ValidationTracker struct {
 	// Stats
 	TotalTransactions int
 	TotalProcessed    int
+}
+
+// TransactionIssue represents a transaction with a data quality issue
+type TransactionIssue struct {
+	Date      string // Transaction date
+	Payee     string // Payee name
+	Amount    string // Transaction amount
+	Category  string // Category (if applicable)
+	IssueType string // Type of issue (e.g., "ZeroAmount", "MissingPayee", "MissingCategory")
 }
 
 // DuplicateWarning represents a potential duplicate transaction
@@ -38,6 +51,7 @@ type DuplicateWarning struct {
 func NewValidationTracker() *ValidationTracker {
 	return &ValidationTracker{
 		DuplicateTransactions: make([]DuplicateWarning, 0),
+		TransactionIssues:     make([]TransactionIssue, 0),
 		UnusedMappings:        make(map[string][]string),
 		UnmatchedData:         make(map[string]int),
 	}
@@ -62,6 +76,26 @@ func (vt *ValidationTracker) AddZeroAmount() {
 	vt.mu.Lock()
 	defer vt.mu.Unlock()
 	vt.ZeroAmounts++
+}
+
+// AddSkippedZeroAmount records a zero-amount transaction that was skipped
+func (vt *ValidationTracker) AddSkippedZeroAmount() {
+	vt.mu.Lock()
+	defer vt.mu.Unlock()
+	vt.SkippedZeroAmount++
+}
+
+// RecordTransactionIssue records a transaction with a data quality issue
+func (vt *ValidationTracker) RecordTransactionIssue(date, payee, amount, category, issueType string) {
+	vt.mu.Lock()
+	defer vt.mu.Unlock()
+	vt.TransactionIssues = append(vt.TransactionIssues, TransactionIssue{
+		Date:      date,
+		Payee:     payee,
+		Amount:    amount,
+		Category:  category,
+		IssueType: issueType,
+	})
 }
 
 // RecordTransaction increments transaction counter
@@ -121,6 +155,170 @@ func (vt *ValidationTracker) HasWarnings() bool {
 	return vt.hasWarningsUnlocked()
 }
 
+// WriteValidationLog writes a detailed validation log to a file
+func (vt *ValidationTracker) WriteValidationLog(outputPath string) error {
+	vt.mu.Lock()
+	defer vt.mu.Unlock()
+
+	logPath := filepath.Join(outputPath, "validation.log")
+	file, err := os.Create(logPath)
+	if err != nil {
+		return fmt.Errorf("failed to create validation.log: %w", err)
+	}
+	defer file.Close()
+
+	// Write header
+	fmt.Fprintf(file, "QIFUTIL Data Validation Report\n")
+	fmt.Fprintf(file, "===============================\n\n")
+
+	// Write summary
+	fmt.Fprintf(file, "SUMMARY\n")
+	fmt.Fprintf(file, "-------\n")
+	fmt.Fprintf(file, "Total transactions processed: %d\n", vt.TotalProcessed)
+	fmt.Fprintf(file, "Total transactions in file: %d\n\n", vt.TotalTransactions)
+
+	// Write issues
+	if !vt.hasWarningsUnlocked() {
+		fmt.Fprintf(file, "✓ No validation issues found\n")
+		return nil
+	}
+
+	fmt.Fprintf(file, "ISSUES FOUND\n")
+	fmt.Fprintf(file, "------------\n")
+
+	if vt.MissingPayees > 0 {
+		fmt.Fprintf(file, "Missing payees: %d transactions\n", vt.MissingPayees)
+	}
+
+	if vt.MissingCategory > 0 {
+		fmt.Fprintf(file, "Missing categories: %d transactions\n", vt.MissingCategory)
+	}
+
+	if vt.ZeroAmounts > 0 {
+		fmt.Fprintf(file, "Zero amounts: %d transactions\n", vt.ZeroAmounts)
+		if vt.SkippedZeroAmount > 0 {
+			fmt.Fprintf(file, "  (Skipped: %d)\n", vt.SkippedZeroAmount)
+		}
+		// Show details of zero-amount transactions
+		fmt.Fprintf(file, "\n  Transaction details:\n")
+		for _, issue := range vt.TransactionIssues {
+			if issue.IssueType == "ZeroAmount" {
+				fmt.Fprintf(file, "    Date: %s | Payee: %s | Amount: %s | Category: %s\n",
+					issue.Date, issue.Payee, issue.Amount, issue.Category)
+			}
+		}
+	}
+
+	if len(vt.DuplicateTransactions) > 0 {
+		fmt.Fprintf(file, "\nPotential duplicates: %d groups detected\n", len(vt.DuplicateTransactions))
+		for _, dup := range vt.DuplicateTransactions {
+			fmt.Fprintf(file, "  - Date: %s | Payee: %s | Amount: %s (appears %d times)\n",
+				dup.Date, dup.Payee, dup.Amount, dup.Count)
+		}
+	}
+
+	if len(vt.UnusedMappings) > 0 {
+		fmt.Fprintf(file, "\nUnused mapping rules:\n")
+		for mappingType, values := range vt.UnusedMappings {
+			fmt.Fprintf(file, "  %s mapping: %d rules never used\n", mappingType, len(values))
+			for _, val := range values {
+				fmt.Fprintf(file, "    - \"%s\"\n", val)
+			}
+		}
+	}
+
+	if len(vt.UnmatchedData) > 0 {
+		fmt.Fprintf(file, "\nUnmapped values:\n")
+		for value, count := range vt.UnmatchedData {
+			fmt.Fprintf(file, "  - \"%s\": appears %d times\n", value, count)
+		}
+	}
+
+	return nil
+}
+
+// WriteValidationLogWithName writes a detailed validation log to a file with a specific name
+func (vt *ValidationTracker) WriteValidationLogWithName(outputPath string, filename string) error {
+	vt.mu.Lock()
+	defer vt.mu.Unlock()
+
+	logPath := filepath.Join(outputPath, filename)
+	file, err := os.Create(logPath)
+	if err != nil {
+		return fmt.Errorf("failed to create %s: %w", filename, err)
+	}
+	defer file.Close()
+
+	// Write header
+	fmt.Fprintf(file, "QIFUTIL Data Validation Report\n")
+	fmt.Fprintf(file, "===============================\n\n")
+
+	// Write summary
+	fmt.Fprintf(file, "SUMMARY\n")
+	fmt.Fprintf(file, "-------\n")
+	fmt.Fprintf(file, "Total transactions processed: %d\n", vt.TotalProcessed)
+	fmt.Fprintf(file, "Total transactions in file: %d\n\n", vt.TotalTransactions)
+
+	// Write issues
+	if !vt.hasWarningsUnlocked() {
+		fmt.Fprintf(file, "✓ No validation issues found\n")
+		return nil
+	}
+
+	fmt.Fprintf(file, "ISSUES FOUND\n")
+	fmt.Fprintf(file, "------------\n")
+
+	if vt.MissingPayees > 0 {
+		fmt.Fprintf(file, "Missing payees: %d transactions\n", vt.MissingPayees)
+	}
+
+	if vt.MissingCategory > 0 {
+		fmt.Fprintf(file, "Missing categories: %d transactions\n", vt.MissingCategory)
+	}
+
+	if vt.ZeroAmounts > 0 {
+		fmt.Fprintf(file, "Zero amounts: %d transactions\n", vt.ZeroAmounts)
+		if vt.SkippedZeroAmount > 0 {
+			fmt.Fprintf(file, "  (Skipped: %d)\n", vt.SkippedZeroAmount)
+		}
+		// Show details of zero-amount transactions
+		fmt.Fprintf(file, "\n  Transaction details:\n")
+		for _, issue := range vt.TransactionIssues {
+			if issue.IssueType == "ZeroAmount" {
+				fmt.Fprintf(file, "    Date: %s | Payee: %s | Amount: %s | Category: %s\n",
+					issue.Date, issue.Payee, issue.Amount, issue.Category)
+			}
+		}
+	}
+
+	if len(vt.DuplicateTransactions) > 0 {
+		fmt.Fprintf(file, "\nPotential duplicates: %d groups detected\n", len(vt.DuplicateTransactions))
+		for _, dup := range vt.DuplicateTransactions {
+			fmt.Fprintf(file, "  - Date: %s | Payee: %s | Amount: %s (appears %d times)\n",
+				dup.Date, dup.Payee, dup.Amount, dup.Count)
+		}
+	}
+
+	if len(vt.UnusedMappings) > 0 {
+		fmt.Fprintf(file, "\nUnused mapping rules:\n")
+		for mappingType, values := range vt.UnusedMappings {
+			fmt.Fprintf(file, "  %s mapping: %d rules never used\n", mappingType, len(values))
+			for _, val := range values {
+				fmt.Fprintf(file, "    - \"%s\"\n", val)
+			}
+		}
+	}
+
+	if len(vt.UnmatchedData) > 0 {
+		fmt.Fprintf(file, "\nUnmapped values:\n")
+		for value, count := range vt.UnmatchedData {
+			fmt.Fprintf(file, "  - \"%s\": appears %d times\n", value, count)
+		}
+	}
+
+	return nil
+}
+
 // PrintSummary prints a validation summary
 func (vt *ValidationTracker) PrintSummary() {
 	vt.mu.Lock()
@@ -144,6 +342,9 @@ func (vt *ValidationTracker) PrintSummary() {
 
 	if vt.ZeroAmounts > 0 {
 		fmt.Printf("  • Zero amounts: %d transactions\n", vt.ZeroAmounts)
+		if vt.SkippedZeroAmount > 0 {
+			fmt.Printf("    (Skipped: %d)\n", vt.SkippedZeroAmount)
+		}
 	}
 
 	if len(vt.DuplicateTransactions) > 0 {

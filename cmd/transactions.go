@@ -231,7 +231,7 @@ MAPPING FILES:
 		}
 
 		// Output CSV Header
-		var transactionRegexString string = `D(?<month>\d{1,2})\/(\s?(?<day>\d{1,2}))'(?<year>\d{2})[\r\n]+(U(?<amount1>.*?)[\r\n]+)(T(?<amount2>.*?)[\r\n]+)(C(?<cleared>.*?)[\r\n]+)((N(?<number>.*?)[\r\n]+)?)(P(?<payee>.*?)[\r\n]+)((M(?<memo>.*?)[\r\n]+)?)(L(?<category>.*?)[\r\n]+)`
+		var transactionRegexString string = `D(?<month>\d{1,2})\/(\s?(?<day>\d{1,2}))'(?<year>\d{2})[\r\n]+(U(?<amount1>.*?)[\r\n]+)(T(?<amount2>.*?)[\r\n]+)(C(?<cleared>.*?)[\r\n]+)((N(?<number>.*?)[\r\n]+)?)((P(?<payee>.*?)[\r\n]+)?)((M(?<memo>.*?)[\r\n]+)?)(L(?<category>.*?)[\r\n]+)`
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
 		// If MONARCH format is specified, use the default columns
@@ -428,34 +428,43 @@ MAPPING FILES:
 			// Print the number of transactions found
 			fmt.Printf("Number of transactions found: %d\n", len(transactions))
 
+			// Create a helper to extract named groups from regex matches
+			getGroup := func(match []string, name string) string {
+				for i, subexp := range regex.SubexpNames() {
+					if subexp == name && i < len(match) {
+						return match[i]
+					}
+				}
+				return ""
+			}
+
 			for _, t := range transactions {
 				if len(t) > 1 {
-					month := strings.TrimSpace(t[1])
-					day := strings.TrimSpace(t[2])
-					year := strings.TrimSpace(t[4])
-					amount1 := strings.TrimSpace(t[6])
+					month := strings.TrimSpace(getGroup(t, "month"))
+					day := strings.TrimSpace(getGroup(t, "day"))
+					year := strings.TrimSpace(getGroup(t, "year"))
+					amount1 := strings.TrimSpace(getGroup(t, "amount1"))
 					// Remove commas from amount for compatibility (e.g., "1,234.56" -> "1234.56")
-					amount1 = strings.ReplaceAll(amount1, ",", "")				
-				// Parse amount to float and format with exactly 2 decimal places
-				amountFloat, err := strconv.ParseFloat(amount1, 64)
-				if err != nil {
-					fmt.Printf("Warning: Could not parse amount '%s', using as-is\n", amount1)
-				} else {
-					amount1 = fmt.Sprintf("%.2f", amountFloat)
-				}					//amount2 := strings.TrimSpace(t[8])
-					//cleared := strings.TrimSpace(t[10])
-					//number := strings.TrimSpace(t[13])
+					amount1 = strings.ReplaceAll(amount1, ",", "")
+					// Parse amount to float and format with exactly 2 decimal places
+					amountFloat, err := strconv.ParseFloat(amount1, 64)
+					if err != nil {
+						fmt.Printf("Warning: Could not parse amount '%s', using as-is\n", amount1)
+					} else {
+						amount1 = fmt.Sprintf("%.2f", amountFloat)
+					}
 
-					payee := strings.TrimSpace(t[15])
+					payee := strings.TrimSpace(getGroup(t, "payee"))
 					// Apply the payee mapping
 					payee = applyMapping(payee, payeeMapping)
 					// Remove double quotes
 					payee = strings.ReplaceAll(payee, "\"", "")
 
-					transactionMemo := strings.TrimSpace(t[18])
+					transactionMemo := strings.TrimSpace(getGroup(t, "memo"))
 
 					// Split the category and tag
-					category, tag := utils.SplitCategoryAndTag(t[20])
+					categoryRaw := strings.TrimSpace(getGroup(t, "category"))
+					category, tag := utils.SplitCategoryAndTag(categoryRaw)
 
 					// Trim whitespace
 					category = strings.TrimSpace(category)
@@ -509,6 +518,7 @@ MAPPING FILES:
 					}
 					if amount1 == "0.00" || amount1 == "0" {
 						validator.AddZeroAmount()
+						validator.RecordTransactionIssue(fullDate, payee, amount1, category, "ZeroAmount")
 					}
 
 					record := TransactionRecord{
@@ -625,6 +635,11 @@ MAPPING FILES:
 
 		// Print validation summary
 		validator.PrintSummary()
+
+		// Write detailed validation log (to transactions-specific log file)
+		if err := validator.WriteValidationLogWithName(outputPath, "transactions_validation.log"); err != nil {
+			fmt.Printf("Warning: Could not write validation log: %v\n", err)
+		}
 	},
 }
 
@@ -675,10 +690,13 @@ func loadMapping(filePath string) (map[string]string, error) {
 			// Single field - skip (move on)
 			continue
 		case 2:
-			// Two fields - set key-value in map
+			// Two fields - set key-value in map (but skip if value is empty)
 			key := record[0]
 			value := record[1]
-			mapping[key] = value
+			// Only add mapping if the target value is not empty
+			if value != "" {
+				mapping[key] = value
+			}
 		default:
 			fmt.Println("Unexpected number of fields:", record)
 		}

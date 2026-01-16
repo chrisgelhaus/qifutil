@@ -1,0 +1,102 @@
+Convert your Quicken (QIF) file into a format you can use in other programs.
+
+≡ƒÆí First time user? Try our interactive guide:
+   qifutil wizard
+
+≡ƒöì Want to see what accounts are in your file?
+   qifutil list accounts --inputFile "YourFile.QIF"
+
+DESCRIPTION:
+  Reads transactions from a Quicken (QIF) file and exports them to CSV files.
+  Each account's transactions are exported to separate CSV files.
+  Large accounts are automatically split into multiple files for easier handling.
+
+COMMON USES:
+  1. Export to Monarch Money format:
+     qifutil export transactions -i data.qif -o ./export/ -f MONARCH
+
+  2. Export with custom CSV columns:
+     qifutil export transactions -i data.qif -o ./export/ -f CSV \
+       --csvColumns "Date,Merchant,Category,Amount"
+
+  3. Export with mappings:
+     qifutil export transactions -i data.qif -o ./export/ \
+       -c categories.csv -p payees.csv
+
+TIPS:
+  - Use list-accounts command first to see available account names
+  - Date filters accept YYYY-MM-DD format
+  - Mapping files help standardize categories and payees
+  - Set recordsPerFile=0 to keep all transactions in one file
+
+OPTIONS:
+  --inputFile          Required. Path to the QIF file to process
+  --outputPath         Required. Directory where CSV files will be created
+  --outputFormat       Optional. Output format: CSV, JSON, XML, or MONARCH (default: CSV)
+  --csvColumns         Optional. Comma-separated column names for CSV output
+                       (only applies to CSV format). Default is Monarch format.
+  --accounts           Optional. Comma-separated list of accounts to process
+  --categoryMapFile    Optional. CSV file mapping source to target categories
+  --accountMapFile     Optional. CSV file mapping source to target account names
+  --payeeMapFile       Optional. CSV file mapping source to target payee names
+  --tagMapFile         Optional. CSV file mapping source to target tags
+  --maxRecordsPerFile  Optional. Maximum transactions per output file (default: 5000)
+  --addTagForImport    Optional. Add QIFIMPORT tag to all transactions
+
+SUPPORTED FORMATS:
+  CSV:     Generic CSV format. Column order is customizable via --csvColumns.
+           Available columns: Date, Merchant, Category, Account,
+           Original Statement, Notes, Amount, Tags
+
+  MONARCH: Optimized for Monarch Money import. Equivalent to CSV format with
+           all standard columns in the recommended order.
+
+  JSON:    JSON array of transaction objects. One file per account.
+
+  XML:     XML format with transaction elements. One file per account.
+
+EXAMPLE COLUMNS:
+  --csvColumns "Date,Merchant,Amount"
+  --csvColumns "Date,Merchant,Category,Account,Amount"
+  --csvColumns "Merchant,Amount,Category"
+
+DEFAULT CSV COLUMNS (MONARCH):
+  - Date (YYYY-MM-DD)
+  - Merchant (Payee)
+  - Category
+  - Account
+  - Original Statement
+  - Notes (Memo)
+  - Amount
+  - Tags
+
+MAPPING FILES:
+  Mapping files should be CSV format with two columns:
+  "source","target"
+  
+  Example category mapping:
+  "Groceries","Food:Groceries"
+  "Gas","Transportation:Fuel"
+
+Usage:
+  qifutil transactions [flags]
+
+Flags:
+  -a, --accountMapFile string    Supplied mapping file for accounts. Optional.
+      --addTagForImport          Add a custom tag to the transaction for import purposes (default true)
+  -c, --categoryMapFile string   Supplied mapping file for categories. Optional.
+      --csvColumns string        Comma-separated list of columns for CSV output (only used with CSV format). Default is Monarch Money format. (default "Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags")
+  -h, --help                     help for transactions
+      --outputFields string      Comma Separated list of fields to export from the QIF File.
+  -f, --outputFormat string      Output format (CSV, JSON, XML, MONARCH). (default "CSV")
+  -p, --payeeMapFile string      Supplied mapping file for payees. Optional.
+  -r, --recordsPerFile int       Optional. Maximum number of records per CSV file. Default is 5000. If set to 0, all records will be written to a single file. (default 5000)
+      --skipZeroAmounts          Skip transactions with zero amount (0.00 or 0)
+  -t, --tagMapFile string        Supplied mapping file for tags. Optional.
+
+Global Flags:
+      --accounts string     Comma-separated list of accounts to process
+      --endDate string      End date filter (YYYY-MM-DD)
+      --inputFile string    Path to input QIF file
+      --outputPath string   Path to output directory
+      --startDate string    Start date filter (YYYY-MM-DD)

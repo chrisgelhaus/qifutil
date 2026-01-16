@@ -432,6 +432,11 @@ TIPS:
 
 		// Print validation summary
 		validator.PrintSummary()
+		
+		// Write detailed validation log (to balance history-specific log file)
+		if err := validator.WriteValidationLogWithName(outputPath, "balance_history_validation.log"); err != nil {
+			fmt.Printf("Warning: Could not write validation log: %v\n", err)
+		}
 	},
 }
 

@@ -16,6 +16,174 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// executeConversion performs the actual conversion with given parameters
+func executeConversion(reader *bufio.Reader, exportTransactions, generateBalanceHistoryLocal bool,
+	balanceHistoryAccount string, balanceHistoryValue string, isBalanceHistoryOpening bool,
+	categoryMapFile, payeeMapFile, accountMapFile, tagMapFile string, skipZeroAmountsLocal bool,
+	usingLoadedConfig bool) {
+	// Show confirmation and execute
+	fmt.Println("\nGreat! I'm ready to convert your file. Here's what I'm going to do:")
+	fmt.Printf("- Read from: %s\n", inputFile)
+	fmt.Printf("- Save to: %s\n", outputPath)
+
+	if exportTransactions {
+		fmt.Println("- Export type: Transactions")
+		if selectedAccounts != "" {
+			fmt.Printf("  • Accounts: %s\n", selectedAccounts)
+		} else {
+			fmt.Println("  • Accounts: All accounts")
+		}
+	}
+
+	if generateBalanceHistoryLocal {
+		fmt.Println("- Balance history details:")
+		fmt.Printf("  • Account: %s\n", balanceHistoryAccount)
+	}
+
+	if categoryMappingFile != "" || payeeMappingFile != "" || accountMappingFile != "" || tagMappingFile != "" {
+		fmt.Println("- Mappings to apply:")
+		if categoryMappingFile != "" {
+			fmt.Printf("  • Categories: %s\n", categoryMappingFile)
+		}
+		if payeeMappingFile != "" {
+			fmt.Printf("  • Payees: %s\n", payeeMappingFile)
+		}
+		if accountMappingFile != "" {
+			fmt.Printf("  • Accounts: %s\n", accountMappingFile)
+		}
+		if tagMappingFile != "" {
+			fmt.Printf("  • Tags: %s\n", tagMappingFile)
+		}
+	}
+
+	if skipZeroAmountsLocal {
+		fmt.Println("- Options:")
+		fmt.Println("  • Skip zero-amount transactions: Yes")
+	}
+
+	fmt.Print("\nPress Enter to start the conversion (or Ctrl+C to cancel): ")
+	reader.ReadString('\n')
+
+	fmt.Println("\nStarting conversion...")
+
+	// Make sure paths are absolute before running transactions
+	if !filepath.IsAbs(outputPath) {
+		var err error
+		outputPath, err = filepath.Abs(outputPath)
+		if err != nil {
+			fmt.Printf("Error with output path: %v\n", err)
+			return
+		}
+	}
+
+	// Run the transactions command with explicit arguments
+	transactionArgs := []string{
+		"transactions",
+		"--inputFile", inputFile,
+		"--outputPath", outputPath,
+	}
+
+	if selectedAccounts != "" {
+		transactionArgs = append(transactionArgs, "--accounts", selectedAccounts)
+	}
+	if startDate != "" {
+		transactionArgs = append(transactionArgs, "--startDate", startDate)
+	}
+	if endDate != "" {
+		transactionArgs = append(transactionArgs, "--endDate", endDate)
+	}
+	if categoryMappingFile != "" {
+		transactionArgs = append(transactionArgs, "--categoryMapFile", categoryMappingFile)
+	}
+	if payeeMappingFile != "" {
+		transactionArgs = append(transactionArgs, "--payeeMapFile", payeeMappingFile)
+	}
+	if accountMappingFile != "" {
+		transactionArgs = append(transactionArgs, "--accountMapFile", accountMappingFile)
+	}
+	if tagMappingFile != "" {
+		transactionArgs = append(transactionArgs, "--tagMapFile", tagMapFile)
+	}
+
+	if skipZeroAmountsLocal {
+		transactionArgs = append(transactionArgs, "--skipZeroAmounts")
+	}
+
+	if exportTransactions {
+		rootCmd.SetArgs(transactionArgs)
+		rootCmd.Execute()
+	}
+
+	// Generate balance history if requested
+	if generateBalanceHistoryLocal && balanceHistoryAccount != "" {
+		fmt.Println("\nGenerating balance history...")
+
+		balanceHistoryArgs := []string{
+			"export",
+			"balance-history",
+			"--inputFile", inputFile,
+			"--outputPath", outputPath,
+			"--accounts", balanceHistoryAccount,
+		}
+
+		if isBalanceHistoryOpening {
+			balanceHistoryArgs = append(balanceHistoryArgs, "--openingBalance", balanceHistoryValue)
+		} else {
+			balanceHistoryArgs = append(balanceHistoryArgs, "--currentBalance", balanceHistoryValue)
+		}
+
+		if startDate != "" {
+			balanceHistoryArgs = append(balanceHistoryArgs, "--startDate", startDate)
+		}
+		if endDate != "" {
+			balanceHistoryArgs = append(balanceHistoryArgs, "--endDate", endDate)
+		}
+
+		rootCmd.SetArgs(balanceHistoryArgs)
+		rootCmd.Execute()
+	}
+
+	// Offer to save configuration for future use
+	fmt.Println("\nConversion completed!")
+	// Only offer to save if not using a previously loaded config (which would be redundant)
+	if !usingLoadedConfig && getYesNoResponse(reader, "\nWould you like to save this configuration for future use? (y/n): ") {
+		fmt.Print("Enter a filename for the config (or press Enter for default 'wizard-config.json'): ")
+		configFilename, _ := reader.ReadString('\n')
+		configFilename = strings.TrimSpace(configFilename)
+		if configFilename == "" {
+			configFilename = "wizard-config.json"
+		}
+
+		// Save to output directory
+		configPath := filepath.Join(outputPath, configFilename)
+
+		cfg := &config.WizardConfig{
+			InputFile:             inputFile,
+			OutputPath:            outputPath,
+			ExportTransactions:    exportTransactions,
+			ExportBalanceHistory:  generateBalanceHistoryLocal,
+			BalanceHistoryAccount: balanceHistoryAccount,
+			SelectedAccounts:      selectedAccounts,
+			StartDate:             startDate,
+			EndDate:               endDate,
+			OutputFormat:          outputFormat,
+			CategoryMapFile:       categoryMappingFile,
+			PayeeMapFile:          payeeMappingFile,
+			AccountMapFile:        accountMappingFile,
+			TagMapFile:            tagMappingFile,
+			AddTagForImport:       addTagForImport,
+			SkipZeroAmounts:       skipZeroAmountsLocal,
+		}
+
+		if err := cfg.SaveConfig(configPath); err != nil {
+			fmt.Printf("Warning: Could not save config: %v\n", err)
+		} else {
+			fmt.Printf("✓ Configuration saved to: %s\n", configPath)
+			fmt.Println("\nYou can reload this config later with: qifutil wizard")
+		}
+	}
+}
+
 // wizardCmd represents the wizard command
 var wizardCmd = &cobra.Command{
 	Use:   "wizard",
@@ -31,6 +199,7 @@ It will ask you questions and help you create the right command for your needs.`
 
 		// Check if user wants to load a previous config
 		var savedConfig *config.WizardConfig
+		var useLoadedConfig bool
 		if getYesNoResponse(reader, "\nWould you like to load a previous configuration? (y/n): ") {
 			fmt.Print("Enter the config file path (or press Enter to skip): ")
 			configPath, _ := reader.ReadString('\n')
@@ -56,8 +225,42 @@ It will ask you questions and help you create the right command for your needs.`
 				} else {
 					fmt.Println("\n✓ Configuration loaded successfully!")
 					fmt.Println(savedConfig.String())
+
+					// Ask if user wants to use the loaded config
+					if getYesNoResponse(reader, "\nUse these settings? (y/n): ") {
+						useLoadedConfig = true
+						// Apply loaded config to global variables
+						inputFile = savedConfig.InputFile
+						outputPath = savedConfig.OutputPath
+						selectedAccounts = savedConfig.SelectedAccounts
+						startDate = savedConfig.StartDate
+						endDate = savedConfig.EndDate
+						outputFormat = savedConfig.OutputFormat
+						categoryMappingFile = savedConfig.CategoryMapFile
+						payeeMappingFile = savedConfig.PayeeMapFile
+						accountMappingFile = savedConfig.AccountMapFile
+						tagMappingFile = savedConfig.TagMapFile
+						addTagForImport = savedConfig.AddTagForImport
+					}
 				}
 			}
+		}
+
+		// If config was loaded and user chose to use it, skip to confirmation
+		if useLoadedConfig {
+			// Generate balance history settings if needed
+			var generateBalanceHistoryLocal bool
+			if savedConfig.ExportBalanceHistory {
+				generateBalanceHistoryLocal = true
+				selectedAccounts = savedConfig.BalanceHistoryAccount
+			}
+
+			// Show confirmation and execute
+			executeConversion(reader, savedConfig.ExportTransactions, generateBalanceHistoryLocal,
+				savedConfig.BalanceHistoryAccount, savedConfig.BalanceHistoryValue, savedConfig.BalanceHistoryOpening,
+				savedConfig.CategoryMapFile, savedConfig.PayeeMapFile, savedConfig.AccountMapFile, savedConfig.TagMapFile,
+				savedConfig.SkipZeroAmounts, true)
+			return
 		}
 
 		// Get input file
@@ -335,184 +538,16 @@ It will ask you questions and help you create the right command for your needs.`
 			}
 		}
 
-		fmt.Println("\nGreat! I'm ready to convert your file. Here's what I'm going to do:")
-		fmt.Printf("- Read from: %s\n", inputFile)
-		fmt.Printf("- Save to: %s\n", outputPath)
-
-		if exportTransactions {
-			fmt.Println("- Export type: Transactions")
-			if selectedAccounts != "" {
-				fmt.Printf("  • Accounts: %s\n", selectedAccounts)
-			} else {
-				fmt.Println("  • Accounts: All accounts")
-			}
+		// Ask about data quality options
+		var skipZeroAmountsLocal bool = false
+		if exportTransactions && getYesNoResponse(reader, "\nWould you like to skip zero-amount transactions? (y/n): ") {
+			skipZeroAmountsLocal = true
 		}
 
-		if generateBalanceHistoryLocal {
-			fmt.Println("- Export type: Balance history")
-			fmt.Printf("  • Account: %s\n", balanceHistoryAccount)
-		}
-
-		if exportTransactions && generateBalanceHistoryLocal {
-			fmt.Println("Note: Both transaction and balance history exports will be created")
-		}
-
-		if exportTransactions {
-			if startDate != "" || endDate != "" {
-				fmt.Printf("- Date range: %s to %s\n",
-					ifEmpty(startDate, "beginning"),
-					ifEmpty(endDate, "end"))
-			}
-			fmt.Printf("- Output format: %s\n", outputFormat)
-
-			if categoryMapFile != "" || payeeMapFile != "" || accountMapFile != "" || tagMapFile != "" {
-				fmt.Println("- Mappings to apply:")
-				if categoryMapFile != "" {
-					fmt.Printf("  • Categories: %s\n", categoryMapFile)
-				}
-				if payeeMapFile != "" {
-					fmt.Printf("  • Payees: %s\n", payeeMapFile)
-				}
-				if accountMapFile != "" {
-					fmt.Printf("  • Accounts: %s\n", accountMapFile)
-				}
-				if tagMapFile != "" {
-					fmt.Printf("  • Tags: %s\n", tagMapFile)
-				}
-			}
-		}
-
-		if generateBalanceHistoryLocal {
-			fmt.Println("- Balance history details:")
-			if isBalanceHistoryOpening {
-				fmt.Printf("  • Opening balance: %s\n", balanceHistoryValue)
-			} else {
-				fmt.Printf("  • Current balance: %s\n", balanceHistoryValue)
-			}
-			if startDate != "" || endDate != "" {
-				fmt.Printf("  • Date range: %s to %s\n",
-					ifEmpty(startDate, "beginning"),
-					ifEmpty(endDate, "end"))
-			}
-		}
-
-		fmt.Print("\nPress Enter to start the conversion (or Ctrl+C to cancel): ")
-		reader.ReadString('\n')
-
-		fmt.Println("\nStarting conversion...")
-
-		// Make sure paths are absolute before running transactions
-		if !filepath.IsAbs(outputPath) {
-			var err error
-			outputPath, err = filepath.Abs(outputPath)
-			if err != nil {
-				fmt.Printf("Error with output path: %v\n", err)
-				return
-			}
-		}
-
-		// Run the transactions command with explicit arguments
-		transactionArgs := []string{
-			"transactions",
-			"--inputFile", inputFile,
-			"--outputPath", outputPath,
-		}
-
-		if selectedAccounts != "" {
-			transactionArgs = append(transactionArgs, "--accounts", selectedAccounts)
-		}
-		if startDate != "" {
-			transactionArgs = append(transactionArgs, "--startDate", startDate)
-		}
-		if endDate != "" {
-			transactionArgs = append(transactionArgs, "--endDate", endDate)
-		}
-		if categoryMapFile != "" {
-			transactionArgs = append(transactionArgs, "--categoryMapFile", categoryMapFile)
-		}
-		if payeeMapFile != "" {
-			transactionArgs = append(transactionArgs, "--payeeMapFile", payeeMapFile)
-		}
-		if accountMapFile != "" {
-			transactionArgs = append(transactionArgs, "--accountMapFile", accountMapFile)
-		}
-		if tagMapFile != "" {
-			transactionArgs = append(transactionArgs, "--tagMapFile", tagMapFile)
-		}
-
-		if exportTransactions {
-			rootCmd.SetArgs(transactionArgs)
-			rootCmd.Execute()
-		}
-
-		// Generate balance history if requested
-		if generateBalanceHistoryLocal && balanceHistoryAccount != "" {
-			fmt.Println("\nGenerating balance history...")
-
-			balanceHistoryArgs := []string{
-				"export",
-				"balance-history",
-				"--inputFile", inputFile,
-				"--outputPath", outputPath,
-				"--accounts", balanceHistoryAccount,
-			}
-
-			if isBalanceHistoryOpening {
-				balanceHistoryArgs = append(balanceHistoryArgs, "--openingBalance", balanceHistoryValue)
-			} else {
-				balanceHistoryArgs = append(balanceHistoryArgs, "--currentBalance", balanceHistoryValue)
-			}
-
-			if startDate != "" {
-				balanceHistoryArgs = append(balanceHistoryArgs, "--startDate", startDate)
-			}
-			if endDate != "" {
-				balanceHistoryArgs = append(balanceHistoryArgs, "--endDate", endDate)
-			}
-
-			rootCmd.SetArgs(balanceHistoryArgs)
-			rootCmd.Execute()
-		}
-
-		// Offer to save configuration for future use
-		fmt.Println("\nConversion completed!")
-		if getYesNoResponse(reader, "\nWould you like to save this configuration for future use? (y/n): ") {
-			fmt.Print("Enter a filename for the config (or press Enter for default 'wizard-config.json'): ")
-			configFilename, _ := reader.ReadString('\n')
-			configFilename = strings.TrimSpace(configFilename)
-			if configFilename == "" {
-				configFilename = "wizard-config.json"
-			}
-
-			// Save to output directory
-			configPath := filepath.Join(outputPath, configFilename)
-
-			cfg := &config.WizardConfig{
-				InputFile:             inputFile,
-				OutputPath:            outputPath,
-				ExportTransactions:    exportTransactions,
-				ExportBalanceHistory:  generateBalanceHistoryLocal,
-				BalanceHistoryAccount: balanceHistoryAccount,
-				BalanceHistoryOpening: isBalanceHistoryOpening,
-				BalanceHistoryValue:   balanceHistoryValue,
-				SelectedAccounts:      selectedAccounts,
-				StartDate:             startDate,
-				EndDate:               endDate,
-				OutputFormat:          outputFormat,
-				CategoryMapFile:       categoryMapFile,
-				PayeeMapFile:          payeeMapFile,
-				AccountMapFile:        accountMapFile,
-				TagMapFile:            tagMapFile,
-				AddTagForImport:       addTagForImport,
-			}
-
-			if err := cfg.SaveConfig(configPath); err != nil {
-				fmt.Printf("Warning: Could not save config: %v\n", err)
-			} else {
-				fmt.Printf("✓ Configuration saved to: %s\n", configPath)
-				fmt.Println("\nYou can reload this config later with: qifutil wizard")
-			}
-		}
+		// Execute the conversion
+		executeConversion(reader, exportTransactions, generateBalanceHistoryLocal,
+			balanceHistoryAccount, balanceHistoryValue, isBalanceHistoryOpening,
+			categoryMapFile, payeeMapFile, accountMapFile, tagMapFile, skipZeroAmountsLocal, false)
 	},
 }
 

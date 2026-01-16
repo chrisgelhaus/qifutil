@@ -32,7 +32,8 @@ type WizardConfig struct {
 	TagMapFile      string `json:"tagMapFile"`
 
 	// Options
-	AddTagForImport bool `json:"addTagForImport"`
+	AddTagForImport  bool `json:"addTagForImport"`
+	SkipZeroAmounts  bool `json:"skipZeroAmounts"`
 }
 
 // LoadConfig loads configuration from a JSON file
