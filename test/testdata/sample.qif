@@ -1,0 +1,74 @@
+!Type:Cat
+NFood:Groceries
+E
+NFood
+E
+NTransportation:Fuel
+E
+NTravel:Air Travel
+E
+NFees & Charges
+E
+^
+!Account
+NChecking Account
+TBank
+^
+!Type:Bank
+D1/15'23
+U-45.23
+T-45.23
+CX
+PGrocery Store
+MFood shopping
+LFood:Groceries
+^
+D1/17'23
+U-35.50
+T-35.50
+CX
+PGas Station
+MFuel up
+LTransportation:Fuel
+^
+D1/20'23
+U-162.06
+T-162.06
+CX
+PAlaska Airlines
+NALASKA AIR
+LTravel:Air Travel
+^
+D1/22'23
+U-75.00
+T-75.00
+CX
+PAnnual Fee
+LAnnual Fee
+^
+D1/25'23
+U150.00
+T150.00
+CX
+PPaycheck
+LIncome
+^
+!Account
+NCreditCard Account
+TCCard
+^
+!Type:CCard
+D1/16'23
+U-120.00
+T-120.00
+CX
+POnline Purchase
+LShopping
+^
+D1/18'23
+U-45.99
+T-45.99
+CX
+PDining
+LFood
+^

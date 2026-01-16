@@ -23,5 +23,5 @@ go.work.sum
 
 # env file
 .env
-# Private test data
-test/testdata/
+# Exclude large private financial data files (keep dummy test data)
+test/testdata/Financial*.qif
