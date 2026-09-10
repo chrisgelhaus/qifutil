@@ -433,3 +433,43 @@ func TestXMLOutputIsWellFormedXML(t *testing.T) {
 		t.Errorf("unexpected first transaction: %+v", first)
 	}
 }
+
+func TestTransactionsAcceptsShortInputAndOutputFlags(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	helper.CopyTestData("sample.qif", filepath.Join(tempDir, "sample.qif"))
+
+	// The form every usage example in the help text and README documents.
+	cmd := exec.Command(qifutilBin, "export", "transactions",
+		"-i", "sample.qif", "-o", "./out", "-f", "MONARCH")
+	cmd.Dir = tempDir
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("documented -i/-o form failed: %v\n%s", err, out)
+	}
+
+	helper.AssertFileExists(filepath.Join(tempDir, "out", "Checking Account_1.csv"))
+}
+
+// TestCategoriesShortOutputFlagStillNamesAFile guards the meaning of -o on the
+// list-style commands, where it selects an output file rather than a directory.
+func TestCategoriesShortOutputFlagStillNamesAFile(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	helper.CopyTestData("sample.qif", filepath.Join(tempDir, "sample.qif"))
+	if err := os.MkdirAll(filepath.Join(tempDir, "out"), 0755); err != nil {
+		t.Fatalf("failed to create output dir: %v", err)
+	}
+
+	cmd := exec.Command(qifutilBin, "export", "categories",
+		"-i", "sample.qif", "-o", "cats.csv", "--outputPath", "./out")
+	cmd.Dir = tempDir
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("export categories with -o failed: %v\n%s", err, out)
+	}
+
+	helper.AssertFileExists(filepath.Join(tempDir, "out", "cats.csv"))
+}

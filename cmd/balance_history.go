@@ -452,6 +452,13 @@ func init() {
 	// Add command-specific flags
 	balanceHistoryCmd.Flags().StringVarP(&currentBalance, "currentBalance", "", "", "The ending account balance (as of the last transaction date). Use for backward calculation. Mutually exclusive with --openingBalance.")
 	balanceHistoryCmd.Flags().StringVarP(&openingBalance, "openingBalance", "", "", "The starting account balance (before the first transaction date). Use for forward calculation. Mutually exclusive with --currentBalance.")
+
+	// Shorthands for the flags shared with the root command. Declaring them
+	// locally shadows the persistent versions, which pflag then skips when
+	// merging, so -i and -o work here without colliding with the -o that names
+	// an output file on the list-style export commands.
+	balanceHistoryCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Path to input QIF file")
+	balanceHistoryCmd.Flags().StringVarP(&outputPath, "outputPath", "o", "", "Path to output directory")
 }
 
 // sortDates sorts a slice of date strings in YYYY-MM-DD format

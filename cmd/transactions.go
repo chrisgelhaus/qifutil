@@ -713,6 +713,13 @@ func init() {
 	transactionsCmd.Flags().BoolVarP(&skipZeroAmounts, "skipZeroAmounts", "", false, "Skip transactions with zero amount (0.00 or 0)")
 	transactionsCmd.Flags().BoolVarP(&preserveOriginalCategory, "preserveOriginalCategory", "", false, "Append the original (pre-mapping) category to the Notes field whenever a category mapping changes it")
 
+	// Shorthands for the flags shared with the root command. Declaring them
+	// locally shadows the persistent versions, which pflag then skips when
+	// merging, so -i and -o work here without colliding with the -o that names
+	// an output file on the list-style export commands.
+	transactionsCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Path to input QIF file")
+	transactionsCmd.Flags().StringVarP(&outputPath, "outputPath", "o", "", "Path to output directory")
+
 	// Mark the shared required flags as required for this command
 	transactionsCmd.MarkPersistentFlagRequired("inputFile")
 	transactionsCmd.MarkPersistentFlagRequired("outputPath")

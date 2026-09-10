@@ -82,25 +82,25 @@ MAPPING FILES:
   "Gas","Transportation:Fuel"
 
 Usage:
-  qifutil transactions [flags]
+  qifutil export transactions [flags]
 
 Flags:
-  -a, --accountMapFile string    Supplied mapping file for accounts. Optional.
-      --addTagForImport          Add a custom tag to the transaction for import purposes (default true)
-  -c, --categoryMapFile string   Supplied mapping file for categories. Optional.
-      --csvColumns string        Comma-separated list of columns for CSV output (only used with CSV format). Default is Monarch Money format. (default "Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags")
-  -h, --help                     help for transactions
-      --outputFields string      Comma Separated list of fields to export from the QIF File.
-  -f, --outputFormat string      Output format (CSV, JSON, XML, MONARCH). (default "CSV")
-  -p, --payeeMapFile string      Supplied mapping file for payees. Optional.
-  -r, --recordsPerFile int       Optional. Maximum number of records per CSV file. Default is 5000. If set to 0, all records will be written to a single file. (default 5000)
-      --preserveOriginalCategory Append the original (pre-mapping) category to the Notes field whenever a category mapping changes it
-      --skipZeroAmounts          Skip transactions with zero amount (0.00 or 0)
-  -t, --tagMapFile string        Supplied mapping file for tags. Optional.
+  -a, --accountMapFile string      Supplied mapping file for accounts. Optional.
+      --addTagForImport            Add a custom tag to the transaction for import purposes (default true)
+  -c, --categoryMapFile string     Supplied mapping file for categories. Optional.
+      --csvColumns string          Comma-separated list of columns for CSV output (only used with CSV format). Default is Monarch Money format. (default "Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags")
+  -h, --help                       help for transactions
+  -i, --inputFile string           Path to input QIF file
+      --outputFields string        Comma Separated list of fields to export from the QIF File.
+  -f, --outputFormat string        Output format (CSV, JSON, XML, MONARCH). (default "CSV")
+  -o, --outputPath string          Path to output directory
+  -p, --payeeMapFile string        Supplied mapping file for payees. Optional.
+      --preserveOriginalCategory   Append the original (pre-mapping) category to the Notes field whenever a category mapping changes it
+  -r, --recordsPerFile int         Optional. Maximum number of records per CSV file. Default is 5000. If set to 0, all records will be written to a single file. (default 5000)
+      --skipZeroAmounts            Skip transactions with zero amount (0.00 or 0)
+  -t, --tagMapFile string          Supplied mapping file for tags. Optional.
 
 Global Flags:
-      --accounts string     Comma-separated list of accounts to process
-      --endDate string      End date filter (YYYY-MM-DD)
-      --inputFile string    Path to input QIF file
-      --outputPath string   Path to output directory
-      --startDate string    Start date filter (YYYY-MM-DD)
+      --accounts string    Comma-separated list of accounts to process
+      --endDate string     End date filter (YYYY-MM-DD)
+      --startDate string   Start date filter (YYYY-MM-DD)
