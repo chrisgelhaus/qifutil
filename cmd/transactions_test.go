@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -348,4 +351,50 @@ func TestPreserveOriginalCategorySkipsNoteWhenOriginalIsBlank(t *testing.T) {
 	if strings.Contains(line, "Original Category") {
 		t.Errorf("expected no back-reference when the original category is blank, got: %s", line)
 	}
+}
+
+// qifutilBin is a freshly built CLI binary, used by tests that exercise
+// behaviour ending in os.Exit and so cannot run in-process.
+var qifutilBin string
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "qifutil-bin-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create temp dir: %v\n", err)
+		os.Exit(1)
+	}
+
+	qifutilBin = filepath.Join(dir, "qifutil")
+	if runtime.GOOS == "windows" {
+		qifutilBin += ".exe"
+	}
+
+	build := exec.Command("go", "build", "-o", qifutilBin, ".")
+	build.Dir = ".."
+	if out, buildErr := build.CombinedOutput(); buildErr != nil {
+		fmt.Fprintf(os.Stderr, "failed to build qifutil: %v\n%s", buildErr, out)
+		os.RemoveAll(dir)
+		os.Exit(1)
+	}
+
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+func TestRelativeInputFileResolvesAgainstWorkingDirectory(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	helper.CopyTestData("sample.qif", filepath.Join(tempDir, "sample.qif"))
+
+	cmd := exec.Command(qifutilBin, "export", "transactions",
+		"--inputFile", "sample.qif", "--outputPath", "./out")
+	cmd.Dir = tempDir
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("export with a relative --inputFile failed: %v\n%s", err, out)
+	}
+
+	helper.AssertFileExists(filepath.Join(tempDir, "out", "Checking Account_1.csv"))
 }

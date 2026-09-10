@@ -212,19 +212,6 @@ MAPPING FILES:
 			os.Exit(1)
 		}
 
-		// Save current directory and change to output directory
-		origDir, dirErr := os.Getwd()
-		if dirErr != nil {
-			fmt.Printf("Error getting current directory: %v\n", dirErr)
-			os.Exit(1)
-		}
-		defer os.Chdir(origDir) // Restore original directory when done
-
-		if chdirErr := os.Chdir(outputPath); chdirErr != nil {
-			fmt.Printf("Error changing to output directory: %v\n", chdirErr)
-			os.Exit(1)
-		}
-
 		// Validate input file exists and is readable
 		if _, err := os.Stat(inputFile); os.IsNotExist(err) {
 			fmt.Printf("Error: Input file not found: %s\n", inputFile)
