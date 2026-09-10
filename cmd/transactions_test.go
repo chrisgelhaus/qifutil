@@ -473,3 +473,44 @@ func TestCategoriesShortOutputFlagStillNamesAFile(t *testing.T) {
 
 	helper.AssertFileExists(filepath.Join(tempDir, "out", "cats.csv"))
 }
+
+func TestNineteenHundredsDatesAreExported(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	setupTransactionExport(t)
+
+	// Quicken marks the century with the separator before the year: a slash for
+	// the 1900s, an apostrophe for the 2000s.
+	qif := "!Account\nNTest Account\nTBank\n^\n!Type:Bank\n" +
+		"D3/15/99\nU-10.00\nT-10.00\nCX\nPLast Century\nMslash form\nLFood:Dining\n^\n" +
+		"D1/5'23\nU-30.00\nT-30.00\nCX\nPThis Century\nMapostrophe form\nLFood:Dining\n^\n"
+
+	sourceFile := filepath.Join(tempDir, "century.qif")
+	if err := os.WriteFile(sourceFile, []byte(qif), 0644); err != nil {
+		t.Fatalf("failed to write qif fixture: %v", err)
+	}
+
+	outputDir := filepath.Join(tempDir, "output")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		t.Fatalf("failed to create output dir: %v", err)
+	}
+	inputFile = sourceFile
+	outputPath = outputDir
+
+	helper.CaptureOutput(func() {
+		transactionsCmd.Run(transactionsCmd, []string{})
+	})
+
+	checkingFile := filepath.Join(outputDir, "Test Account_1.csv")
+	helper.AssertFileExists(checkingFile)
+
+	slash := lineContaining(t, checkingFile, "Last Century")
+	if !strings.Contains(slash, "1999-03-15") {
+		t.Errorf("slash-form date should export as 1999-03-15, got: %s", slash)
+	}
+
+	apostrophe := lineContaining(t, checkingFile, "This Century")
+	if !strings.Contains(apostrophe, "2023-01-05") {
+		t.Errorf("apostrophe-form date should export as 2023-01-05, got: %s", apostrophe)
+	}
+}

@@ -228,7 +228,7 @@ MAPPING FILES:
 		}
 
 		// Output CSV Header
-		var transactionRegexString string = `D(?<month>\d{1,2})\/(\s?(?<day>\d{1,2}))'(?<year>\d{2})[\r\n]+(U(?<amount1>.*?)[\r\n]+)(T(?<amount2>.*?)[\r\n]+)(C(?<cleared>.*?)[\r\n]+)((N(?<number>.*?)[\r\n]+)?)((P(?<payee>.*?)[\r\n]+)?)((M(?<memo>.*?)[\r\n]+)?)(L(?<category>.*?)[\r\n]+)`
+		var transactionRegexString string = `D\s*(?<month>\d{1,2})\/\s*(?<day>\d{1,2})(?<sep>['/])\s*(?<year>\d{1,4})[\r\n]+(U(?<amount1>.*?)[\r\n]+)(T(?<amount2>.*?)[\r\n]+)(C(?<cleared>.*?)[\r\n]+)((N(?<number>.*?)[\r\n]+)?)((P(?<payee>.*?)[\r\n]+)?)((M(?<memo>.*?)[\r\n]+)?)(L(?<category>.*?)[\r\n]+)`
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
 		// If MONARCH format is specified, use the default columns
@@ -494,16 +494,19 @@ MAPPING FILES:
 						}
 					}
 
-					// DATE FORMAT: YYYY-MM-DD
-					fullYear := "20" + year
-					month = "0" + month
-					fullMonth := month[len(month)-2:]
-					day = "0" + day
-					fullDay := day[len(day)-2:]
-					fullDate := fullYear + "-" + fullMonth + "-" + fullDay
+					// DATE FORMAT: YYYY-MM-DD. The separator before the year carries
+					// the century, so the parts are handed to the parser rather than
+					// being pasted onto a fixed 20xx prefix.
+					sep := getGroup(t, "sep")
+					transDate, dateErr := utils.ParseQIFDate(month, day, sep, year)
+					if dateErr != nil {
+						fmt.Printf("Warning: Skipping transaction dated %s/%s%s%s: %v\n",
+							month, day, sep, year, dateErr)
+						continue
+					}
+					fullDate := transDate.Format("2006-01-02")
 
 					// Check if the transaction date is within the specified range
-					transDate, _ := time.Parse("2006-01-02", fullDate)
 					if startDate != "" {
 						startDateTime, _ := time.Parse("2006-01-02", startDate)
 						if transDate.Before(startDateTime) {
