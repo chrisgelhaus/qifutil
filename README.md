@@ -161,6 +161,7 @@ You can customize your transaction export with the following options:
 - `--endDate`: Filter transactions until this date (YYYY-MM-DD)
 - `--outputFormat`: Choose CSV (default), JSON, XML, or MONARCH
 - `--skipZeroAmounts`: Skip transactions with zero amount (0.00 or 0) - useful for cleaning data
+- `--preserveOriginalCategory`: When a category mapping rewrites a category, append the original to the Notes field so it can be traced back after import
 - `--categoryMapFile`: Map categories using a CSV file
 - `--accountMapFile`: Map account names using a CSV file
 - `--payeeMapFile`: Map payee names using a CSV file
@@ -380,6 +381,33 @@ qifutil export transactions --inputFile "data.qif" --outputPath "export/" \
 - Source values are case-sensitive (exact match required)
 - Unmapped values pass through unchanged
 - Comment your mappings with descriptive source names
+
+### Preserving the Original Category
+
+Category mappings are destructive: once `Insurance:Auto` has been collapsed into
+`Insurance`, the original is gone from the export. If you need to trace a
+transaction back to the category Quicken actually had, add
+`--preserveOriginalCategory`:
+
+```bash
+qifutil export transactions --inputFile "MyData.QIF" --outputPath "export/" \
+  --categoryMapFile "category_mappings.csv" --preserveOriginalCategory
+```
+
+The pre-mapping category is appended to the `Notes` field in square brackets,
+after any existing memo:
+
+| Category | Notes |
+| --- | --- |
+| `Insurance` | `Semi-annual premium [Original Category: Insurance:Auto]` |
+| `Insurance` | `[Original Category: Insurance:Home]` |
+
+Notes is a field Monarch Money imports, so the reference survives the import and
+is searchable afterwards.
+
+The note is added only when a mapping actually changed the category - rows that
+pass through unmapped are left alone. The flag applies to the CSV, MONARCH and
+JSON output formats and is off by default.
 
 ## Testing
 

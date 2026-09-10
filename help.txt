@@ -42,6 +42,9 @@ OPTIONS:
   --tagMapFile         Optional. CSV file mapping source to target tags
   --maxRecordsPerFile  Optional. Maximum transactions per output file (default: 5000)
   --addTagForImport    Optional. Add QIFIMPORT tag to all transactions
+  --preserveOriginalCategory
+                       Optional. When a category mapping rewrites a category,
+                       append the original to Notes so it can be traced back
 
 SUPPORTED FORMATS:
   CSV:     Generic CSV format. Column order is customizable via --csvColumns.
@@ -91,6 +94,7 @@ Flags:
   -f, --outputFormat string      Output format (CSV, JSON, XML, MONARCH). (default "CSV")
   -p, --payeeMapFile string      Supplied mapping file for payees. Optional.
   -r, --recordsPerFile int       Optional. Maximum number of records per CSV file. Default is 5000. If set to 0, all records will be written to a single file. (default 5000)
+      --preserveOriginalCategory Append the original (pre-mapping) category to the Notes field whenever a category mapping changes it
       --skipZeroAmounts          Skip transactions with zero amount (0.00 or 0)
   -t, --tagMapFile string        Supplied mapping file for tags. Optional.
 

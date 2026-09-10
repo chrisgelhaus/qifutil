@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
+Copyright © 2025 Chris Gelhaus
 */
 package cmd
 
@@ -31,6 +31,7 @@ var startDate string
 var endDate string
 var addTagForImport bool = false
 var skipZeroAmounts bool = false
+var preserveOriginalCategory bool = false
 var maxRecordsPerFile int = 5000
 var csvColumns string
 
@@ -81,6 +82,10 @@ COMMON USES:
      qifutil export transactions -i data.qif -o ./export/ \
        -c categories.csv -p payees.csv
 
+  4. Export with mappings, keeping a back-reference to the original category:
+     qifutil export transactions --inputFile data.qif --outputPath ./export/ \
+       -c categories.csv --preserveOriginalCategory
+
 TIPS:
   - Use list-accounts command first to see available account names
   - Date filters accept YYYY-MM-DD format
@@ -100,6 +105,10 @@ OPTIONS:
   --tagMapFile         Optional. CSV file mapping source to target tags
   --maxRecordsPerFile  Optional. Maximum transactions per output file (default: 5000)
   --addTagForImport    Optional. Add QIFIMPORT tag to all transactions
+  --preserveOriginalCategory
+                       Optional. When a category mapping rewrites a category,
+                       append the original to Notes so it can be traced back,
+                       e.g. "Weekly shop [Original Category: Insurance:Auto]"
 
 SUPPORTED FORMATS:
   CSV:     Generic CSV format. Column order is customizable via --csvColumns.
@@ -124,7 +133,7 @@ DEFAULT CSV COLUMNS (MONARCH):
   - Category
   - Account
   - Original Statement
-  - Notes (Memo)
+  - Notes (Memo, plus the original category when --preserveOriginalCategory is set)
   - Amount
   - Tags
 
@@ -457,6 +466,9 @@ MAPPING FILES:
 					}
 
 					payee := strings.TrimSpace(getGroup(t, "payee"))
+					// Keep the payee exactly as it appeared in the QIF file so the
+					// Original Statement column survives payee mapping.
+					originalPayee := strings.ReplaceAll(payee, "\"", "")
 					// Apply the payee mapping
 					payee = applyMapping(payee, payeeMapping)
 					// Remove double quotes
@@ -470,8 +482,16 @@ MAPPING FILES:
 
 					// Trim whitespace
 					category = strings.TrimSpace(category)
+					// Keep the pre-mapping category so it can be referenced later
+					originalCategory := category
 					// Apply the category mapping
 					category = applyMapping(category, categoryMapping)
+
+					// Record the pre-mapping category in the memo so a remapped
+					// category can be traced back to what Quicken had.
+					if preserveOriginalCategory && originalCategory != "" && category != originalCategory {
+						transactionMemo = appendOriginalCategoryNote(transactionMemo, originalCategory)
+					}
 
 					// Trim whitespace
 					tag = strings.TrimSpace(tag)
@@ -533,7 +553,7 @@ MAPPING FILES:
 						Merchant:          payee,
 						Category:          category,
 						Account:           outputAccountName,
-						OriginalStatement: payee,
+						OriginalStatement: originalPayee,
 						Notes:             transactionMemo,
 						Amount:            amount1,
 						Tags:              tag,
@@ -688,7 +708,7 @@ MAPPING FILES:
 }
 
 func init() {
-	rootCmd.AddCommand(transactionsCmd)
+	exportCmd.AddCommand(transactionsCmd)
 
 	// Add command-specific flags
 	transactionsCmd.Flags().StringVarP(&outputFields, "outputFields", "", "", "Comma Separated list of fields to export from the QIF File.")
@@ -701,6 +721,7 @@ func init() {
 	transactionsCmd.Flags().IntVarP(&maxRecordsPerFile, "recordsPerFile", "r", 5000, "Optional. Maximum number of records per CSV file. Default is 5000. If set to 0, all records will be written to a single file.")
 	transactionsCmd.Flags().BoolVarP(&addTagForImport, "addTagForImport", "", true, "Add a custom tag to the transaction for import purposes")
 	transactionsCmd.Flags().BoolVarP(&skipZeroAmounts, "skipZeroAmounts", "", false, "Skip transactions with zero amount (0.00 or 0)")
+	transactionsCmd.Flags().BoolVarP(&preserveOriginalCategory, "preserveOriginalCategory", "", false, "Append the original (pre-mapping) category to the Notes field whenever a category mapping changes it")
 
 	// Mark the shared required flags as required for this command
 	transactionsCmd.MarkPersistentFlagRequired("inputFile")
@@ -760,6 +781,16 @@ func applyMapping(input string, mapping map[string]string) string {
 	}
 	// If no mapping is found, return the original input.
 	return input
+}
+
+// appendOriginalCategoryNote appends a back-reference to the pre-mapping
+// category onto a transaction memo.
+func appendOriginalCategoryNote(memo, originalCategory string) string {
+	note := "[Original Category: " + originalCategory + "]"
+	if memo == "" {
+		return note
+	}
+	return memo + " " + note
 }
 
 func writeHeader(f *os.File, h string) error {
