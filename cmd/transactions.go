@@ -546,7 +546,10 @@ MAPPING FILES:
 						Tags:              tag,
 					}
 
-					if strings.ToUpper(outputFormat) == "JSON" {
+					// JSON and XML are marshalled as a whole document, so their
+					// records are collected and written when the file is closed.
+					format := strings.ToUpper(outputFormat)
+					if format == "JSON" || format == "XML" {
 						records = append(records, record)
 					} else {
 						line := buildCSVRow(record, columnsToUse)

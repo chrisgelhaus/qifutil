@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/xml"
 	"fmt"
 	"os"
 	"os/exec"
@@ -208,9 +209,9 @@ func setupTransactionExport(t *testing.T) {
 	preserveOriginalCategory = false
 }
 
-// exportSample runs the transactions command over sample.qif and returns the
-// path of the Checking Account output file.
-func exportSample(t *testing.T, helper *test.TestHelper, tempDir string) string {
+// exportSampleDir runs the transactions command over sample.qif and returns the
+// directory the output was written to.
+func exportSampleDir(t *testing.T, helper *test.TestHelper, tempDir string) string {
 	outputDir := filepath.Join(tempDir, "output")
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		t.Fatalf("failed to create output dir: %v", err)
@@ -226,7 +227,13 @@ func exportSample(t *testing.T, helper *test.TestHelper, tempDir string) string 
 		transactionsCmd.Run(transactionsCmd, []string{})
 	})
 
-	return filepath.Join(outputDir, "Checking Account_1.csv")
+	return outputDir
+}
+
+// exportSample runs the transactions command over sample.qif and returns the
+// path of the Checking Account CSV output file.
+func exportSample(t *testing.T, helper *test.TestHelper, tempDir string) string {
+	return filepath.Join(exportSampleDir(t, helper, tempDir), "Checking Account_1.csv")
 }
 
 // writeMappingFile writes a two-column mapping CSV and returns its path.
@@ -397,4 +404,32 @@ func TestRelativeInputFileResolvesAgainstWorkingDirectory(t *testing.T) {
 	}
 
 	helper.AssertFileExists(filepath.Join(tempDir, "out", "Checking Account_1.csv"))
+}
+
+func TestXMLOutputIsWellFormedXML(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	setupTransactionExport(t)
+	outputFormat = "XML"
+
+	xmlFile := filepath.Join(exportSampleDir(t, helper, tempDir), "Checking Account_1.xml")
+	helper.AssertFileExists(xmlFile)
+
+	content, err := os.ReadFile(xmlFile)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", xmlFile, err)
+	}
+
+	var parsed transactionList
+	if err := xml.Unmarshal(content, &parsed); err != nil {
+		t.Fatalf("XML output does not parse: %v\n%s", err, content)
+	}
+	if len(parsed.Transactions) == 0 {
+		t.Fatal("XML output contained no transaction elements")
+	}
+
+	first := parsed.Transactions[0]
+	if first.Date != "2023-01-05" || first.Merchant != "Employee Payroll" {
+		t.Errorf("unexpected first transaction: %+v", first)
+	}
 }
