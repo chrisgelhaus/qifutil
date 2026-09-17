@@ -106,7 +106,9 @@ OPTIONS:
   --payeeMapFile       Optional. CSV file mapping source to target payee names
   --tagMapFile         Optional. CSV file mapping source to target tags
   --maxRecordsPerFile  Optional. Maximum transactions per output file (default: 5000)
-  --addTagForImport    Optional. Add QIFIMPORT tag to all transactions
+  --addTagForImport    Optional. Add a QIFIMPORT tag to every transaction.
+                       ON BY DEFAULT. Pass --addTagForImport=false to
+                       export without it.
   --preserveOriginalCategory
                        Optional. When a category mapping rewrites a category,
                        append the original to Notes so it can be traced back,
@@ -718,6 +720,11 @@ MAPPING FILES:
 			fmt.Println("Processed all accounts")
 		}
 		fmt.Printf("Output directory: %s\n", outputPath)
+		// This is on by default, so the export says so rather than leaving a tag
+		// on every transaction to be discovered after the import.
+		if addTagForImport {
+			fmt.Println("Import tag: QIFIMPORT added to every transaction (turn this off with --addTagForImport=false)")
+		}
 		if maxRecordsPerFile > 0 {
 			fmt.Printf("Split files: %d records per file (for Monarch compatibility)\n", maxRecordsPerFile)
 		}

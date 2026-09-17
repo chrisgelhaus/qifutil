@@ -195,6 +195,7 @@ func setupTransactionExport(t *testing.T) {
 	prevCategoryMap, prevPayeeMap := categoryMappingFile, payeeMappingFile
 	prevPreserve := preserveOriginalCategory
 	prevExpand := expandSplits
+	prevAddTag := addTagForImport
 
 	t.Cleanup(func() {
 		selectedAccounts, startDate, endDate = prevAccounts, prevStart, prevEnd
@@ -203,6 +204,7 @@ func setupTransactionExport(t *testing.T) {
 		categoryMappingFile, payeeMappingFile = prevCategoryMap, prevPayeeMap
 		preserveOriginalCategory = prevPreserve
 		expandSplits = prevExpand
+		addTagForImport = prevAddTag
 	})
 
 	selectedAccounts, startDate, endDate = "", "", ""
@@ -210,6 +212,7 @@ func setupTransactionExport(t *testing.T) {
 	categoryMappingFile, payeeMappingFile = "", ""
 	preserveOriginalCategory = false
 	expandSplits = false
+	addTagForImport = true
 }
 
 // exportSampleDir runs the transactions command over sample.qif and returns the
@@ -897,5 +900,36 @@ func TestAccountHeadersAreNotCountedAsUndatedRecords(t *testing.T) {
 
 	if strings.Contains(output, "had no date") {
 		t.Errorf("account headers were reported as undated records:\n%s", output)
+	}
+}
+
+func TestImportTagIsReportedWhenApplied(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	setupTransactionExport(t)
+
+	output, outputDir := exportInlineQIF(t, helper, tempDir, splitQIF)
+
+	// The tag is on by default, so the export has to say so.
+	if !strings.Contains(output, "QIFIMPORT") {
+		t.Errorf("the summary should report the import tag, got:\n%s", output)
+	}
+	if !strings.Contains(output, "--addTagForImport=false") {
+		t.Errorf("the summary should say how to turn the tag off, got:\n%s", output)
+	}
+
+	helper.AssertFileContains(filepath.Join(outputDir, "Checking_1.csv"), "QIFIMPORT")
+}
+
+func TestImportTagIsNotReportedWhenDisabled(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	setupTransactionExport(t)
+	addTagForImport = false
+
+	output, _ := exportInlineQIF(t, helper, tempDir, splitQIF)
+
+	if strings.Contains(output, "QIFIMPORT") {
+		t.Errorf("nothing should mention the tag when it is off, got:\n%s", output)
 	}
 }

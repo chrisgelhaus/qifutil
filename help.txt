@@ -41,7 +41,9 @@ OPTIONS:
   --payeeMapFile       Optional. CSV file mapping source to target payee names
   --tagMapFile         Optional. CSV file mapping source to target tags
   --maxRecordsPerFile  Optional. Maximum transactions per output file (default: 5000)
-  --addTagForImport    Optional. Add QIFIMPORT tag to all transactions
+  --addTagForImport    Optional. Add a QIFIMPORT tag to every transaction.
+                       ON BY DEFAULT. Pass --addTagForImport=false to
+                       export without it.
   --preserveOriginalCategory
                        Optional. When a category mapping rewrites a category,
                        append the original to Notes so it can be traced back

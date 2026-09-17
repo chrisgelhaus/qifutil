@@ -163,6 +163,7 @@ You can customize your transaction export with the following options:
 - `--skipZeroAmounts`: Skip transactions with zero amount (0.00 or 0) - useful for cleaning data
 - `--preserveOriginalCategory`: When a category mapping rewrites a category, append the original to the Notes field so it can be traced back after import
 - `--expandSplits`: Export each line item of a split transaction as its own row, keeping its own category and amount
+- `--addTagForImport`: Tag every transaction with `QIFIMPORT`. **On by default** - pass `--addTagForImport=false` to export without it
 - `--categoryMapFile`: Map categories using a CSV file
 - `--accountMapFile`: Map account names using a CSV file
 - `--payeeMapFile`: Map payee names using a CSV file
