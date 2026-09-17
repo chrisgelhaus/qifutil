@@ -18,6 +18,10 @@ where the two disagree, this file is right.
 | Hard-coded date assembly | `utils.ParseQIFDate`, unit tested | v1.10.0 |
 | Resource leak when splitting files | error paths close the file and skip the account | v1.10.0 |
 | "catergory" typo | payees.go, categories.go | v1.9.0 |
+| Validation reporting that never ran | duplicates, unmapped values and unused rules are computed now | unreleased |
+| `applyMapping` scanned the whole map | a lookup, and one count per mapping instead of a line per value | unreleased |
+| Unmapped list ordered at random | ranged over a map; ordered by frequency now | unreleased |
+| Summary named a log file that is not written | it pointed at `validation.log` | unreleased |
 
 ## 🟠 Open
 
@@ -26,17 +30,6 @@ where the two disagree, this file is right.
 `categories.go:115`, `payees.go:83`, `tags.go:118`. These patterns are constants,
 so a failure would be a defect in the program rather than bad input, but the
 error should be returned rather than dropped.
-
-### Validation reporting that never runs
-`PrintSummary` and the validation log have sections for duplicate transactions,
-unmapped values and unused mapping rules. None of the three is ever computed:
-`AddDuplicate`, `AddUnmatchedData` and `RecordUnusedMapping` have no callers. The
-tool reports that it checked for duplicates. It did not.
-
-### `applyMapping` scans the map
-It iterates the whole mapping for every transaction instead of a map lookup, and
-prints a line per hit. On a real file that is tens of thousands of lines of
-output burying the summary.
 
 ### Unknown `--csvColumns` names produce blank columns
 `buildCSVRow` falls through to an empty string for a name it does not recognise,

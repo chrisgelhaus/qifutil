@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -331,6 +332,13 @@ MAPPING FILES:
 			fmt.Println("No matches found.")
 		}
 
+		// Wrap each mapping so the rules it uses can be tracked, and the ones
+		// it never uses reported at the end.
+		categories := newMappingSet("Category", categoryMapping)
+		payees := newMappingSet("Payee", payeeMapping)
+		accounts := newMappingSet("Account", accountMapping)
+		tags := newMappingSet("Tag", tagMapping)
+
 		// Initialize validation tracker for all accounts
 		validator := utils.NewValidationTracker()
 
@@ -361,10 +369,9 @@ MAPPING FILES:
 
 			// Map the account name using the account mapping if available
 			var outputAccountName string
-			if len(accountMapping[accountName]) > 0 {
-				outputAccountName = accountMapping[accountName]
-			} else {
-				outputAccountName = accountName
+			outputAccountName = accounts.apply(accountName)
+			if accounts.loaded() && outputAccountName == accountName {
+				validator.AddUnmatchedData("account", accountName)
 			}
 
 			restOfText := inputContent[accountBlock[1]:]
@@ -456,6 +463,11 @@ MAPPING FILES:
 				fmt.Printf("Note: %d record(s) had no date and were not exported\n", undatedRecords)
 			}
 
+			// Counted per account: the same date, payee and amount appearing in
+			// two accounts is what a transfer between them looks like.
+			seen := make(map[string]int)
+			var seenOrder []string
+
 			for _, fields := range transactions {
 				// DATE FORMAT: YYYY-MM-DD. The separator before the year carries
 				// the century, so the field is handed to the parser rather than
@@ -486,9 +498,20 @@ MAPPING FILES:
 				// Original Statement column survives payee mapping.
 				originalPayee := strings.ReplaceAll(payee, "\"", "")
 				// Apply the payee mapping
-				payee = applyMapping(payee, payeeMapping)
+				payee = payees.apply(payee)
+				if payees.loaded() && payee == originalPayee && payee != "" {
+					validator.AddUnmatchedData("payee", payee)
+				}
 				// Remove double quotes
 				payee = strings.ReplaceAll(payee, "\"", "")
+
+				// Tallied once per transaction, before a split fans it out into
+				// several rows of differing amounts.
+				key := fullDate + "|" + payee + "|" + strings.ReplaceAll(fields.Amount, ",", "")
+				if seen[key] == 0 {
+					seenOrder = append(seenOrder, key)
+				}
+				seen[key]++
 
 				// A split transaction contributes one row per line item, so the
 				// categories and amounts it records survive the export. Without
@@ -512,7 +535,10 @@ MAPPING FILES:
 					// Keep the pre-mapping category so it can be referenced later
 					originalCategory := category
 					// Apply the category mapping
-					category = applyMapping(category, categoryMapping)
+					category = categories.apply(category)
+					if categories.loaded() && category == originalCategory && category != "" {
+						validator.AddUnmatchedData("category", category)
+					}
 
 					// Record the pre-mapping category in the memo so a remapped
 					// category can be traced back to what Quicken had.
@@ -523,7 +549,11 @@ MAPPING FILES:
 					// Trim whitespace
 					tag = strings.TrimSpace(tag)
 					// Apply the tag mapping
-					tag = applyMapping(tag, tagMapping)
+					originalTag := tag
+					tag = tags.apply(tag)
+					if tags.loaded() && tag == originalTag && tag != "" {
+						validator.AddUnmatchedData("tag", tag)
+					}
 
 					// Prepend a custom Tag to the Category
 					if addTagForImport {
@@ -689,6 +719,15 @@ MAPPING FILES:
 				records = nil
 			}
 			outputFile.Close()
+
+			// Report anything that appeared more than once in this account.
+			for _, key := range seenOrder {
+				if seen[key] < 2 {
+					continue
+				}
+				parts := strings.SplitN(key, "|", 3)
+				validator.AddDuplicate(parts[0], parts[1], parts[2], seen[key])
+			}
 		}
 
 		// Print summary
@@ -714,6 +753,17 @@ MAPPING FILES:
 			fmt.Println("Processed all accounts")
 		}
 		fmt.Printf("Output directory: %s\n", outputPath)
+		// One line per mapping, in place of the line that used to be printed for
+		// every value changed.
+		for _, set := range []*mappingSet{categories, payees, accounts, tags} {
+			if set.loaded() {
+				plural := "values"
+				if set.hits == 1 {
+					plural = "value"
+				}
+				fmt.Printf("%s mapping: applied to %d %s\n", set.name, set.hits, plural)
+			}
+		}
 		// This is on by default, so the export says so rather than leaving a tag
 		// on every transaction to be discovered after the import.
 		if addTagForImport {
@@ -723,6 +773,12 @@ MAPPING FILES:
 			fmt.Printf("Split files: %d records per file (for Monarch compatibility)\n", maxRecordsPerFile)
 		}
 		fmt.Println("\nExport completed successfully!")
+
+		// Rules that never matched anything are usually typos in the mapping
+		// file, so they are worth naming.
+		for _, set := range []*mappingSet{categories, payees, accounts, tags} {
+			validator.RecordUnusedMapping(set.name, set.unusedRules())
+		}
 
 		// Print validation summary
 		validator.PrintSummary()
@@ -808,16 +864,53 @@ func loadMapping(filePath string) (map[string]string, error) {
 	return mapping, nil
 }
 
-func applyMapping(input string, mapping map[string]string) string {
-	// Loop through the mapping and look for the input value. If found, replace it with the mapped value.
-	for oldValue, newValue := range mapping {
-		if oldValue == input {
-			fmt.Printf("Mapping: %s -> %s\n", input, newValue)
-			return newValue
+// mappingSet holds the rules loaded from one mapping file and remembers
+// which of them were used, so the rules that never matched can be reported
+// afterwards. Those are usually typos in the mapping file.
+type mappingSet struct {
+	name  string
+	rules map[string]string
+	used  map[string]bool
+	hits  int
+}
+
+func newMappingSet(name string, rules map[string]string) *mappingSet {
+	return &mappingSet{name: name, rules: rules, used: make(map[string]bool)}
+}
+
+// loaded reports whether a mapping file was supplied for this kind of value.
+func (m *mappingSet) loaded() bool {
+	return m != nil && len(m.rules) > 0
+}
+
+// apply returns the mapped value, or the input unchanged when no rule
+// matches.
+func (m *mappingSet) apply(input string) string {
+	if !m.loaded() {
+		return input
+	}
+	target, ok := m.rules[input]
+	if !ok {
+		return input
+	}
+	m.used[input] = true
+	m.hits++
+	return target
+}
+
+// unusedRules lists the rules that never matched anything in the file.
+func (m *mappingSet) unusedRules() []string {
+	if !m.loaded() {
+		return nil
+	}
+	var unused []string
+	for source := range m.rules {
+		if !m.used[source] {
+			unused = append(unused, source)
 		}
 	}
-	// If no mapping is found, return the original input.
-	return input
+	sort.Strings(unused)
+	return unused
 }
 
 // uniqueFileBase turns an account name into a file name stem that is safe to
