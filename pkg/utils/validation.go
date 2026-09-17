@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 )
 
@@ -137,6 +139,38 @@ func (vt *ValidationTracker) AddDuplicate(date, payee, amount string, count int)
 	}
 }
 
+// unmatchedEntry is one unmapped value and how often it appeared.
+type unmatchedEntry struct {
+	key   string
+	count int
+}
+
+// unmatchedByFrequency orders the unmapped values with the most common
+// first, so the ones worth adding to a mapping file come first. Ranging over
+// the map directly gave a different order on every run.
+// Must only be called when the lock is already held.
+func (vt *ValidationTracker) unmatchedByFrequency() []unmatchedEntry {
+	entries := make([]unmatchedEntry, 0, len(vt.UnmatchedData))
+	for key, count := range vt.UnmatchedData {
+		entries = append(entries, unmatchedEntry{key: key, count: count})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].count != entries[j].count {
+			return entries[i].count > entries[j].count
+		}
+		return entries[i].key < entries[j].key
+	})
+	return entries
+}
+
+// splitUnmatchedKey separates the kind of value from the value itself.
+func splitUnmatchedKey(key string) (kind, value string) {
+	if kind, value, found := strings.Cut(key, ":"); found {
+		return kind, value
+	}
+	return "value", key
+}
+
 // hasWarningsUnlocked checks for warnings without acquiring the lock
 // Must only be called when the lock is already held
 func (vt *ValidationTracker) hasWarningsUnlocked() bool {
@@ -229,8 +263,9 @@ func (vt *ValidationTracker) WriteValidationLogWithName(outputPath string, filen
 
 	if len(vt.UnmatchedData) > 0 {
 		fmt.Fprintf(file, "\nUnmapped values:\n")
-		for value, count := range vt.UnmatchedData {
-			fmt.Fprintf(file, "  - \"%s\": appears %d times\n", value, count)
+		for _, entry := range vt.unmatchedByFrequency() {
+			kind, value := splitUnmatchedKey(entry.key)
+			fmt.Fprintf(file, "  - %s \"%s\": appears %d times\n", kind, value, entry.count)
 		}
 	}
 
@@ -297,5 +332,5 @@ func (vt *ValidationTracker) PrintSummary() {
 	}
 
 	fmt.Println("=============================")
-	fmt.Printf("Note: Review validation.log for full details\n\n")
+	fmt.Printf("Note: Review the validation log in the output directory for full details\n\n")
 }
