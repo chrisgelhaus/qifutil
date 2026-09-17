@@ -65,7 +65,7 @@ var transactionsCmd = &cobra.Command{
    qifutil wizard
 
 🔍 Want to see what accounts are in your file?
-   qifutil list accounts --inputFile "YourFile.QIF"
+   qifutil list-accounts --inputFile "YourFile.QIF"
 
 DESCRIPTION:
   Reads transactions from a Quicken (QIF) file and exports them to CSV files.

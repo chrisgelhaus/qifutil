@@ -1,9 +1,20 @@
-# Testing Guide for New Features
+# Testing Guide
+
+See TEST_SUMMARY.md for what the suite covers and the conventions it follows.
 
 ## Quick Start
 
 ### Run All Tests
 ```bash
+go test ./...
+```
+
+The `cmd` package holds most of the tests. Running only `./pkg/...`, as an
+earlier version of this guide suggested, skips them.
+
+### Run One Package
+```bash
+go test ./cmd -v
 go test ./pkg/utils -v
 go test ./pkg/config -v
 ```
@@ -102,17 +113,22 @@ All tests use:
 
 ```bash
 # Show all tests passing
-$ go test ./pkg/utils ./pkg/config -v
-ok      qifutil/pkg/utils       0.249s
-ok      qifutil/pkg/config      0.312s
+$ go test ./...
+?       qifutil                 [no test files]
+ok      qifutil/cmd             3.2s
+ok      qifutil/pkg/config      0.8s
+ok      qifutil/pkg/utils       0.7s
 
 # Run with coverage
-$ go test ./pkg/utils -cover
-coverage: 85.2% of statements
-
-$ go test ./pkg/config -cover
-coverage: 92.1% of statements
+$ go test ./cmd ./pkg/utils ./pkg/config -cover
+qifutil/cmd             coverage: 50.2% of statements
+qifutil/pkg/utils       coverage: 55.5% of statements
+qifutil/pkg/config      coverage: 90.9% of statements
 ```
+
+The `cmd` figure is held down by the wizard, which is interactive and barely
+covered. The parsing code the exports depend on is tested directly in
+`pkg/utils`.
 
 ## Adding New Tests
 

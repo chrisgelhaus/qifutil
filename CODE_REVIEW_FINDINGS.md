@@ -1,5 +1,9 @@
 # Code Review - QIFUTIL
 
+> **Superseded.** This was written against an earlier revision and many of
+> the issues below were fixed in v1.10.0. See CODE_REVIEW.md for what is
+> actually outstanding; treat this file as history.
+
 ## Issues Found
 
 ### 🔴 CRITICAL ISSUES
