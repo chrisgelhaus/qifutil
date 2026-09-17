@@ -162,6 +162,7 @@ You can customize your transaction export with the following options:
 - `--outputFormat`: Choose CSV (default), JSON, XML, or MONARCH
 - `--skipZeroAmounts`: Skip transactions with zero amount (0.00 or 0) - useful for cleaning data
 - `--preserveOriginalCategory`: When a category mapping rewrites a category, append the original to the Notes field so it can be traced back after import
+- `--expandSplits`: Export each line item of a split transaction as its own row, keeping its own category and amount
 - `--categoryMapFile`: Map categories using a CSV file
 - `--accountMapFile`: Map account names using a CSV file
 - `--payeeMapFile`: Map payee names using a CSV file
@@ -408,6 +409,40 @@ is searchable afterwards.
 The note is added only when a mapping actually changed the category - rows that
 pass through unmapped are left alone. The flag applies to the CSV, MONARCH and
 JSON output formats and is off by default.
+
+### Split Transactions
+
+A split transaction records several categorised line items under one entry. By
+default the export writes a single row carrying the transaction total and its
+top level category, so a $100 shop divided between groceries and household goods
+arrives as $100 of groceries - and if the top level category matches neither
+line item, the row is filed under a category the transaction never used.
+
+Pass `--expandSplits` to export each line item as its own row:
+
+```bash
+qifutil export transactions -i "MyData.QIF" -o "export/" \
+  --expandSplits
+```
+
+| Category | Notes | Amount |
+| --- | --- | --- |
+| `Food:Groceries` | `Groceries portion` | `-60.00` |
+| `Shopping:Home` | `Household portion` | `-40.00` |
+
+Each row keeps the parent transaction's date, payee and account. The parent row
+is not written as well, so the account total is unchanged. A line item with no
+memo of its own inherits the transaction memo, and a category written as
+`Food:Groceries/Vacation` still yields the `Vacation` tag.
+
+If the line items do not add up to the transaction total, the rows are still
+exported and the difference is reported:
+
+```
+Warning: splits for 2023-01-05 "Superstore" do not sum to the transaction total; difference -10.00
+```
+
+Without the flag, split transactions export exactly as they did before.
 
 ## Testing
 

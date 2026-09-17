@@ -194,6 +194,7 @@ func setupTransactionExport(t *testing.T) {
 	prevInput, prevOutput := inputFile, outputPath
 	prevCategoryMap, prevPayeeMap := categoryMappingFile, payeeMappingFile
 	prevPreserve := preserveOriginalCategory
+	prevExpand := expandSplits
 
 	t.Cleanup(func() {
 		selectedAccounts, startDate, endDate = prevAccounts, prevStart, prevEnd
@@ -201,12 +202,14 @@ func setupTransactionExport(t *testing.T) {
 		inputFile, outputPath = prevInput, prevOutput
 		categoryMappingFile, payeeMappingFile = prevCategoryMap, prevPayeeMap
 		preserveOriginalCategory = prevPreserve
+		expandSplits = prevExpand
 	})
 
 	selectedAccounts, startDate, endDate = "", "", ""
 	outputFormat, csvColumns = "CSV", DefaultMonarchColumns
 	categoryMappingFile, payeeMappingFile = "", ""
 	preserveOriginalCategory = false
+	expandSplits = false
 }
 
 // exportSampleDir runs the transactions command over sample.qif and returns the
@@ -243,6 +246,17 @@ func writeMappingFile(t *testing.T, dir, name, contents string) string {
 		t.Fatalf("failed to write mapping file %s: %v", path, err)
 	}
 	return path
+}
+
+// countLinesContaining reports how many lines of content contain needle.
+func countLinesContaining(content, needle string) int {
+	count := 0
+	for _, line := range strings.Split(content, "\n") {
+		if strings.Contains(line, needle) {
+			count++
+		}
+	}
+	return count
 }
 
 // lineContaining returns the first line of a file containing needle.
@@ -607,4 +621,128 @@ POnly T and P
 	if !strings.Contains(reordered, "Food:Dining") {
 		t.Errorf("reordered record lost its category, got: %s", reordered)
 	}
+}
+
+	const splitQIF = `!Account
+NChecking
+TBank
+^
+!Type:Bank
+D1/5'23
+U-100.00
+T-100.00
+CX
+PSuperstore
+Mbig shop
+LFood:Groceries
+SFood:Groceries
+EGroceries portion
+$-60.00
+SShopping:Home
+$-40.00
+^
+`
+
+// exportInlineQIF writes a QIF fixture, exports it, and returns the console
+// output together with the directory the export was written to.
+func exportInlineQIF(t *testing.T, helper *test.TestHelper, tempDir, qif string) (string, string) {
+	sourceFile := filepath.Join(tempDir, "fixture.qif")
+	if err := os.WriteFile(sourceFile, []byte(qif), 0644); err != nil {
+		t.Fatalf("failed to write qif fixture: %v", err)
+	}
+
+	outputDir := filepath.Join(tempDir, "output")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		t.Fatalf("failed to create output dir: %v", err)
+	}
+	inputFile = sourceFile
+	outputPath = outputDir
+
+	out := helper.CaptureOutput(func() {
+		transactionsCmd.Run(transactionsCmd, []string{})
+	})
+	return out, outputDir
+}
+
+func TestSplitsCollapseToOneRowByDefault(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	setupTransactionExport(t)
+
+	_, outputDir := exportInlineQIF(t, helper, tempDir, splitQIF)
+	checkingFile := filepath.Join(outputDir, "Checking_1.csv")
+
+	content, err := os.ReadFile(checkingFile)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", checkingFile, err)
+	}
+	if rows := countLinesContaining(string(content), "Superstore"); rows != 1 {
+		t.Errorf("expected one row without --expandSplits, got %d\n%s", rows, content)
+	}
+	helper.AssertFileContains(checkingFile, "-100.00")
+}
+
+func TestExpandSplitsEmitsOneRowPerSplit(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	setupTransactionExport(t)
+	expandSplits = true
+
+	_, outputDir := exportInlineQIF(t, helper, tempDir, splitQIF)
+	checkingFile := filepath.Join(outputDir, "Checking_1.csv")
+
+	groceries := lineContaining(t, checkingFile, "Groceries portion")
+	if !strings.Contains(groceries, "-60.00") || !strings.Contains(groceries, "Food:Groceries") {
+		t.Errorf("first split row wrong: %s", groceries)
+	}
+
+	household := lineContaining(t, checkingFile, "Shopping:Home")
+	if !strings.Contains(household, "-40.00") {
+		t.Errorf("second split row wrong: %s", household)
+	}
+
+	// The parent row must not also be written, or the account total doubles.
+	content, err := os.ReadFile(checkingFile)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", checkingFile, err)
+	}
+	if strings.Contains(string(content), "-100.00") {
+		t.Errorf("parent row was written alongside its splits:\n%s", content)
+	}
+}
+
+func TestExpandSplitsFallsBackToTheParentMemo(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	setupTransactionExport(t)
+	expandSplits = true
+
+	_, outputDir := exportInlineQIF(t, helper, tempDir, splitQIF)
+	checkingFile := filepath.Join(outputDir, "Checking_1.csv")
+
+	// The Shopping:Home split carries no E line, so it inherits "big shop".
+	household := lineContaining(t, checkingFile, "Shopping:Home")
+	if !strings.Contains(household, "big shop") {
+		t.Errorf("split without its own memo should inherit the parent memo: %s", household)
+	}
+}
+
+func TestExpandSplitsWarnsWhenSplitsDoNotReconcile(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	setupTransactionExport(t)
+	expandSplits = true
+
+	unbalanced := strings.Replace(splitQIF, "$-40.00", "$-30.00", 1)
+	output, outputDir := exportInlineQIF(t, helper, tempDir, unbalanced)
+
+	if !strings.Contains(output, "do not sum") {
+		t.Errorf("expected a warning that the splits do not reconcile, got:\n%s", output)
+	}
+	if !strings.Contains(output, "10.00") {
+		t.Errorf("warning should name the difference, got:\n%s", output)
+	}
+
+	// The split rows are still exported.
+	helper.AssertFileContains(filepath.Join(outputDir, "Checking_1.csv"), "-30.00")
 }

@@ -45,6 +45,9 @@ OPTIONS:
   --preserveOriginalCategory
                        Optional. When a category mapping rewrites a category,
                        append the original to Notes so it can be traced back
+  --expandSplits       Optional. Export each line item of a split transaction
+                       as its own row, so its category and amount are kept
+                       instead of collapsing into the transaction total
 
 SUPPORTED FORMATS:
   CSV:     Generic CSV format. Column order is customizable via --csvColumns.
@@ -89,6 +92,7 @@ Flags:
       --addTagForImport            Add a custom tag to the transaction for import purposes (default true)
   -c, --categoryMapFile string     Supplied mapping file for categories. Optional.
       --csvColumns string          Comma-separated list of columns for CSV output (only used with CSV format). Default is Monarch Money format. (default "Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags")
+      --expandSplits               Export each line item of a split transaction as its own row, keeping its own category and amount
   -h, --help                       help for transactions
   -i, --inputFile string           Path to input QIF file
       --outputFields string        Comma Separated list of fields to export from the QIF File.

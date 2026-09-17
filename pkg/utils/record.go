@@ -17,6 +17,14 @@ type TransactionFields struct {
 	Payee    string // P
 	Memo     string // M
 	Category string // L
+	Splits   []SplitLine
+}
+
+// SplitLine is one line item of a split transaction.
+type SplitLine struct {
+	Category string // S
+	Memo     string // E
+	Amount   string // $
 }
 
 // SplitRecords divides a QIF block into records on the "^" terminator that
@@ -83,6 +91,13 @@ func ParseTransactionRecord(record string) TransactionFields {
 			fields.Memo = value
 		case 'L':
 			fields.Category = value
+		case 'S':
+			// S opens a new line item of a split.
+			fields.Splits = append(fields.Splits, SplitLine{Category: value})
+		case 'E':
+			currentSplit(&fields).Memo = value
+		case '$':
+			currentSplit(&fields).Amount = value
 		}
 	}
 
@@ -91,6 +106,15 @@ func ParseTransactionRecord(record string) TransactionFields {
 	}
 
 	return fields
+}
+
+// currentSplit returns the split a memo or amount line belongs to, opening one
+// if the value arrived before its S line.
+func currentSplit(fields *TransactionFields) *SplitLine {
+	if len(fields.Splits) == 0 {
+		fields.Splits = append(fields.Splits, SplitLine{})
+	}
+	return &fields.Splits[len(fields.Splits)-1]
 }
 
 // qifDateField matches a QIF date such as "3/15/99", "1/5'23" or "12/31/1985",

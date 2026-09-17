@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -32,6 +33,7 @@ var endDate string
 var addTagForImport bool = false
 var skipZeroAmounts bool = false
 var preserveOriginalCategory bool = false
+var expandSplits bool = false
 var maxRecordsPerFile int = 5000
 var csvColumns string
 
@@ -109,6 +111,9 @@ OPTIONS:
                        Optional. When a category mapping rewrites a category,
                        append the original to Notes so it can be traced back,
                        e.g. "Weekly shop [Original Category: Insurance:Auto]"
+  --expandSplits       Optional. Export each line item of a split transaction
+                       as its own row, so its category and amount are kept
+                       instead of collapsing into the transaction total
 
 SUPPORTED FORMATS:
   CSV:     Generic CSV format. Column order is customizable via --csvColumns.
@@ -435,61 +440,8 @@ MAPPING FILES:
 			}
 
 			for _, fields := range transactions {
-				amount1 := fields.Amount
-				// Remove commas from amount for compatibility (e.g., "1,234.56" -> "1234.56")
-				amount1 = strings.ReplaceAll(amount1, ",", "")
-				// Parse amount to float and format with exactly 2 decimal places
-				amountFloat, err := strconv.ParseFloat(amount1, 64)
-				if err != nil {
-					fmt.Printf("Warning: Could not parse amount '%s', using as-is\n", amount1)
-				} else {
-					amount1 = fmt.Sprintf("%.2f", amountFloat)
-				}
-
-				payee := fields.Payee
-				// Keep the payee exactly as it appeared in the QIF file so the
-				// Original Statement column survives payee mapping.
-				originalPayee := strings.ReplaceAll(payee, "\"", "")
-				// Apply the payee mapping
-				payee = applyMapping(payee, payeeMapping)
-				// Remove double quotes
-				payee = strings.ReplaceAll(payee, "\"", "")
-
-				transactionMemo := fields.Memo
-
-				// Split the category and tag
-				categoryRaw := fields.Category
-				category, tag := utils.SplitCategoryAndTag(categoryRaw)
-
-				// Trim whitespace
-				category = strings.TrimSpace(category)
-				// Keep the pre-mapping category so it can be referenced later
-				originalCategory := category
-				// Apply the category mapping
-				category = applyMapping(category, categoryMapping)
-
-				// Record the pre-mapping category in the memo so a remapped
-				// category can be traced back to what Quicken had.
-				if preserveOriginalCategory && originalCategory != "" && category != originalCategory {
-					transactionMemo = appendOriginalCategoryNote(transactionMemo, originalCategory)
-				}
-
-				// Trim whitespace
-				tag = strings.TrimSpace(tag)
-				// Apply the tag mapping
-				tag = applyMapping(tag, tagMapping)
-
-				// Prepend a custom Tag to the Category
-				if addTagForImport {
-					if tag != "" {
-						tag = "QIFIMPORT," + tag
-					} else {
-						tag = "QIFIMPORT"
-					}
-				}
-
 				// DATE FORMAT: YYYY-MM-DD. The separator before the year carries
-				// the century, so the parts are handed to the parser rather than
+				// the century, so the field is handed to the parser rather than
 				// being pasted onto a fixed 20xx prefix.
 				transDate, dateErr := utils.ParseQIFDateField(fields.Date)
 				if dateErr != nil {
@@ -512,117 +464,171 @@ MAPPING FILES:
 					}
 				}
 
-				// Validation tracking
-				validator.RecordTransaction()
-				if payee == "" {
-					validator.AddMissingPayee()
-				}
-				if category == "" {
-					validator.AddMissingCategory()
-				}
-				if amount1 == "0.00" || amount1 == "0" {
-					validator.AddZeroAmount()
-					validator.RecordTransactionIssue(fullDate, payee, amount1, category, "ZeroAmount")
-					// Skip this transaction if the skipZeroAmounts flag is set
-					if skipZeroAmounts {
-						validator.AddSkippedZeroAmount()
-						continue
+				payee := fields.Payee
+				// Keep the payee exactly as it appeared in the QIF file so the
+				// Original Statement column survives payee mapping.
+				originalPayee := strings.ReplaceAll(payee, "\"", "")
+				// Apply the payee mapping
+				payee = applyMapping(payee, payeeMapping)
+				// Remove double quotes
+				payee = strings.ReplaceAll(payee, "\"", "")
+
+				// A split transaction contributes one row per line item, so the
+				// categories and amounts it records survive the export. Without
+				// --expandSplits it stays a single row, as before.
+				for _, row := range rowsForTransaction(fields, fullDate) {
+					amount1 := strings.ReplaceAll(row.amount, ",", "")
+					// Format the amount with exactly 2 decimal places
+					if amountFloat, amountErr := parseAmount(row.amount); amountErr != nil {
+						fmt.Printf("Warning: Could not parse amount '%s', using as-is\n", amount1)
+					} else {
+						amount1 = fmt.Sprintf("%.2f", amountFloat)
 					}
-				}
 
-				record := TransactionRecord{
-					Date:              fullDate,
-					Merchant:          payee,
-					Category:          category,
-					Account:           outputAccountName,
-					OriginalStatement: originalPayee,
-					Notes:             transactionMemo,
-					Amount:            amount1,
-					Tags:              tag,
-				}
+					transactionMemo := row.memo
 
-				// JSON and XML are marshalled as a whole document, so their
-				// records are collected and written when the file is closed.
-				format := strings.ToUpper(outputFormat)
-				if format == "JSON" || format == "XML" {
-					records = append(records, record)
-				} else {
-					line := buildCSVRow(record, columnsToUse)
-					if err := writeTransaction(outputFile, line); err != nil {
+					// Split the category and tag
+					category, tag := utils.SplitCategoryAndTag(row.category)
+
+					// Trim whitespace
+					category = strings.TrimSpace(category)
+					// Keep the pre-mapping category so it can be referenced later
+					originalCategory := category
+					// Apply the category mapping
+					category = applyMapping(category, categoryMapping)
+
+					// Record the pre-mapping category in the memo so a remapped
+					// category can be traced back to what Quicken had.
+					if preserveOriginalCategory && originalCategory != "" && category != originalCategory {
+						transactionMemo = appendOriginalCategoryNote(transactionMemo, originalCategory)
+					}
+
+					// Trim whitespace
+					tag = strings.TrimSpace(tag)
+					// Apply the tag mapping
+					tag = applyMapping(tag, tagMapping)
+
+					// Prepend a custom Tag to the Category
+					if addTagForImport {
+						if tag != "" {
+							tag = "QIFIMPORT," + tag
+						} else {
+							tag = "QIFIMPORT"
+						}
+					}
+
+					// Validation tracking
+					validator.RecordTransaction()
+					if payee == "" {
+						validator.AddMissingPayee()
+					}
+					if category == "" {
+						validator.AddMissingCategory()
+					}
+					if amount1 == "0.00" || amount1 == "0" {
+						validator.AddZeroAmount()
+						validator.RecordTransactionIssue(fullDate, payee, amount1, category, "ZeroAmount")
+						// Skip this transaction if the skipZeroAmounts flag is set
+						if skipZeroAmounts {
+							validator.AddSkippedZeroAmount()
+							continue
+						}
+					}
+
+					record := TransactionRecord{
+						Date:              fullDate,
+						Merchant:          payee,
+						Category:          category,
+						Account:           outputAccountName,
+						OriginalStatement: originalPayee,
+						Notes:             transactionMemo,
+						Amount:            amount1,
+						Tags:              tag,
+					}
+
+					// JSON and XML are marshalled as a whole document, so their
+					// records are collected and written when the file is closed.
+					format := strings.ToUpper(outputFormat)
+					if format == "JSON" || format == "XML" {
+						records = append(records, record)
+					} else {
+						line := buildCSVRow(record, columnsToUse)
+						if err := writeTransaction(outputFile, line); err != nil {
+							outputFile.Close()
+							fmt.Printf("failed to write transaction: %v\n", err)
+							return
+						}
+					}
+					count++
+					// Check if we need to split the file
+					if maxRecordsPerFile != 0 && count%maxRecordsPerFile == 0 {
+						// Close current file
+						if strings.ToUpper(outputFormat) == "JSON" {
+							jsonData, err := json.MarshalIndent(records, "", "  ")
+							if err != nil {
+								outputFile.Close()
+								fmt.Printf("Error: failed to marshal JSON data: %v\n", err)
+								return
+							}
+							_, err = outputFile.Write(jsonData)
+							if err != nil {
+								outputFile.Close()
+								fmt.Printf("Error: failed to write JSON data to file: %v\n", err)
+								return
+							}
+							records = nil
+						} else if strings.ToUpper(outputFormat) == "XML" {
+							xmlData, err := xml.MarshalIndent(transactionList{Transactions: records}, "", "  ")
+							if err != nil {
+								outputFile.Close()
+								fmt.Printf("Error: failed to marshal XML data: %v\n", err)
+								return
+							}
+							_, err = outputFile.Write(xmlData)
+							if err != nil {
+								outputFile.Close()
+								fmt.Printf("Error: failed to write XML data to file: %v\n", err)
+								return
+							}
+							records = nil
+						}
 						outputFile.Close()
-						fmt.Printf("failed to write transaction: %v\n", err)
-						return
+
+						// Start new file
+						fileIndex++
+						outputFileName = fmt.Sprintf("%s_%d%s", accountName, fileIndex, ext)
+						fullPath := filepath.Join(outputPath, outputFileName)
+						fmt.Printf("\nCreating split file for %s (File %d) - Records %d to %d\n",
+							accountName,
+							fileIndex,
+							(fileIndex-1)*maxRecordsPerFile+1,
+							fileIndex*maxRecordsPerFile)
+
+						outputFile, err = os.Create(fullPath)
+						if err != nil {
+							fmt.Printf("Error creating split file %s: %v\n", outputFileName, err)
+							return
+						}
+
+						// Write appropriate headers for the new file
+						if strings.ToUpper(outputFormat) == "XML" {
+							_, err := outputFile.WriteString(xml.Header)
+							if err != nil {
+								outputFile.Close()
+								fmt.Printf("Error: failed to write XML header to split file %s: %v\n", outputFileName, err)
+								return
+							}
+						}
+						if strings.ToUpper(outputFormat) == "CSV" {
+							if err := writeHeader(outputFile, outputCSVHeader); err != nil {
+								outputFile.Close()
+								fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
+								return
+							}
+						}
 					}
+
 				}
-				count++
-				// Check if we need to split the file
-				if maxRecordsPerFile != 0 && count%maxRecordsPerFile == 0 {
-					// Close current file
-					if strings.ToUpper(outputFormat) == "JSON" {
-						jsonData, err := json.MarshalIndent(records, "", "  ")
-						if err != nil {
-							outputFile.Close()
-							fmt.Printf("Error: failed to marshal JSON data: %v\n", err)
-							return
-						}
-						_, err = outputFile.Write(jsonData)
-						if err != nil {
-							outputFile.Close()
-							fmt.Printf("Error: failed to write JSON data to file: %v\n", err)
-							return
-						}
-						records = nil
-					} else if strings.ToUpper(outputFormat) == "XML" {
-						xmlData, err := xml.MarshalIndent(transactionList{Transactions: records}, "", "  ")
-						if err != nil {
-							outputFile.Close()
-							fmt.Printf("Error: failed to marshal XML data: %v\n", err)
-							return
-						}
-						_, err = outputFile.Write(xmlData)
-						if err != nil {
-							outputFile.Close()
-							fmt.Printf("Error: failed to write XML data to file: %v\n", err)
-							return
-						}
-						records = nil
-					}
-					outputFile.Close()
-
-					// Start new file
-					fileIndex++
-					outputFileName = fmt.Sprintf("%s_%d%s", accountName, fileIndex, ext)
-					fullPath := filepath.Join(outputPath, outputFileName)
-					fmt.Printf("\nCreating split file for %s (File %d) - Records %d to %d\n",
-						accountName,
-						fileIndex,
-						(fileIndex-1)*maxRecordsPerFile+1,
-						fileIndex*maxRecordsPerFile)
-
-					outputFile, err = os.Create(fullPath)
-					if err != nil {
-						fmt.Printf("Error creating split file %s: %v\n", outputFileName, err)
-						return
-					}
-
-					// Write appropriate headers for the new file
-					if strings.ToUpper(outputFormat) == "XML" {
-						_, err := outputFile.WriteString(xml.Header)
-						if err != nil {
-							outputFile.Close()
-							fmt.Printf("Error: failed to write XML header to split file %s: %v\n", outputFileName, err)
-							return
-						}
-					}
-					if strings.ToUpper(outputFormat) == "CSV" {
-						if err := writeHeader(outputFile, outputCSVHeader); err != nil {
-							outputFile.Close()
-							fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
-							return
-						}
-					}
-				}
-
 			}
 			if strings.ToUpper(outputFormat) == "JSON" && len(records) > 0 {
 				jsonData, err := json.MarshalIndent(records, "", "  ")
@@ -706,6 +712,7 @@ func init() {
 	transactionsCmd.Flags().BoolVarP(&addTagForImport, "addTagForImport", "", true, "Add a custom tag to the transaction for import purposes")
 	transactionsCmd.Flags().BoolVarP(&skipZeroAmounts, "skipZeroAmounts", "", false, "Skip transactions with zero amount (0.00 or 0)")
 	transactionsCmd.Flags().BoolVarP(&preserveOriginalCategory, "preserveOriginalCategory", "", false, "Append the original (pre-mapping) category to the Notes field whenever a category mapping changes it")
+	transactionsCmd.Flags().BoolVarP(&expandSplits, "expandSplits", "", false, "Export each line item of a split transaction as its own row, keeping its own category and amount")
 
 	// Shorthands for the flags shared with the root command. Declaring them
 	// locally shadows the persistent versions, which pflag then skips when
@@ -772,6 +779,76 @@ func applyMapping(input string, mapping map[string]string) string {
 	}
 	// If no mapping is found, return the original input.
 	return input
+}
+
+// transactionRow is the part of an output row that differs between a plain
+// transaction and the individual line items of a split.
+type transactionRow struct {
+	amount   string
+	memo     string
+	category string
+}
+
+// rowsForTransaction returns the rows a QIF record contributes to the export.
+// A split transaction becomes one row per line item when expandSplits is set,
+// so the categories and amounts it records are not collapsed into the parent
+// total; otherwise the record stays a single row.
+func rowsForTransaction(fields utils.TransactionFields, date string) []transactionRow {
+	if !expandSplits || len(fields.Splits) == 0 {
+		return []transactionRow{{
+			amount:   fields.Amount,
+			memo:     fields.Memo,
+			category: fields.Category,
+		}}
+	}
+
+	rows := make([]transactionRow, 0, len(fields.Splits))
+	for _, split := range fields.Splits {
+		// A line item without its own memo inherits the transaction memo, so
+		// the row is not left blank.
+		memo := split.Memo
+		if memo == "" {
+			memo = fields.Memo
+		}
+		rows = append(rows, transactionRow{
+			amount:   split.Amount,
+			memo:     memo,
+			category: split.Category,
+		})
+	}
+
+	warnIfSplitsDoNotReconcile(fields, date)
+	return rows
+}
+
+// warnIfSplitsDoNotReconcile reports a split whose line items do not add up to
+// the transaction total, rather than quietly exporting an account that no
+// longer balances.
+func warnIfSplitsDoNotReconcile(fields utils.TransactionFields, date string) {
+	total, err := parseAmount(fields.Amount)
+	if err != nil {
+		return
+	}
+
+	var sum float64
+	for _, split := range fields.Splits {
+		amount, splitErr := parseAmount(split.Amount)
+		if splitErr != nil {
+			return
+		}
+		sum += amount
+	}
+
+	// Half a cent is below anything QIF can express, so it is a safe tolerance.
+	if difference := total - sum; math.Abs(difference) >= 0.005 {
+		fmt.Printf("Warning: splits for %s \"%s\" do not sum to the transaction total; difference %.2f\n",
+			date, fields.Payee, difference)
+	}
+}
+
+// parseAmount reads a QIF amount, which may carry thousands separators.
+func parseAmount(value string) (float64, error) {
+	return strconv.ParseFloat(strings.ReplaceAll(value, ",", ""), 64)
 }
 
 // appendOriginalCategoryNote appends a back-reference to the pre-mapping

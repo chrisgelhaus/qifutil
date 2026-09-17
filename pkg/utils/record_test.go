@@ -1,6 +1,9 @@
 package utils
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestParseTransactionRecord(t *testing.T) {
 	tests := []struct {
@@ -57,7 +60,7 @@ PReordered after L`,
 			},
 		},
 		{
-			name: "split and address lines are ignored",
+			name: "split lines are captured, address lines are not",
 			record: `D1/5'23
 T-60.00
 PSplit Payee
@@ -72,6 +75,10 @@ A123 Main St`,
 			want: TransactionFields{
 				Date: "1/5'23", Amount: "-60.00",
 				Payee: "Split Payee", Category: "Food:Dining",
+				Splits: []SplitLine{
+					{Category: "Food:Groceries", Memo: "Groceries portion", Amount: "-40.00"},
+					{Category: "Food:Dining", Memo: "Dining portion", Amount: "-20.00"},
+				},
 			},
 		},
 		{
@@ -88,7 +95,7 @@ A123 Main St`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ParseTransactionRecord(tt.record); got != tt.want {
+			if got := ParseTransactionRecord(tt.record); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ParseTransactionRecord() =\n  %+v\nwant\n  %+v", got, tt.want)
 			}
 		})
@@ -149,5 +156,62 @@ func TestParseQIFDateFieldRejectsMalformedFields(t *testing.T) {
 		if _, err := ParseQIFDateField(field); err == nil {
 			t.Errorf("ParseQIFDateField(%q) succeeded, want an error", field)
 		}
+	}
+}
+
+func TestParseTransactionRecordSplits(t *testing.T) {
+	tests := []struct {
+		name   string
+		record string
+		want   []SplitLine
+	}{
+		{
+			name:   "no split lines yields no splits",
+			record: "D1/5\nT-10.00\nLFood:Dining",
+			want:   nil,
+		},
+		{
+			name: "a split may omit its memo",
+			record: `D1/7'23
+T-90.00
+SFood:Groceries
+$-50.00
+STravel:Hotels
+$-40.00`,
+			want: []SplitLine{
+				{Category: "Food:Groceries", Amount: "-50.00"},
+				{Category: "Travel:Hotels", Amount: "-40.00"},
+			},
+		},
+		{
+			name: "a split category may carry a tag",
+			record: `D1/7'23
+T-50.00
+SFood:Groceries/Vacation
+Etagged split
+$-50.00`,
+			want: []SplitLine{
+				{Category: "Food:Groceries/Vacation", Memo: "tagged split", Amount: "-50.00"},
+			},
+		},
+		{
+			name: "a split with no category is still captured",
+			record: `D1/7'23
+T-30.00
+S
+Euncategorised portion
+$-30.00`,
+			want: []SplitLine{
+				{Memo: "uncategorised portion", Amount: "-30.00"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ParseTransactionRecord(tt.record).Splits; !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Splits = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }
