@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
+Copyright © 2025 Chris Gelhaus
 */
 package cmd
 
@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"qifutil/pkg/utils"
 
 	"github.com/spf13/cobra"
 )
@@ -27,15 +29,23 @@ var tagsCmd = &cobra.Command{
 	Use:   "tags",
 	Short: "Extract tags from a QIF file",
 	Long:  `Extract tags from a QIF file.`,
-	PreRun: func(cmd *cobra.Command, args []string) {
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		if inputFile == "" {
-			fmt.Println("Error: Missing required flag --inputFile")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --inputFile")
 		}
+
+		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		var tags []string
-		var transactionRegexString string = `D(?<month>\d{1,2})\/(\s?(?<day>\d{1,2}))'(?<year>\d{2})[\r\n]+(U(?<amount1>.*?)[\r\n]+)(T(?<amount2>.*?)[\r\n]+)(C(?<cleared>.*?)[\r\n]+)((N(?<number>.*?)[\r\n]+)?)(P(?<payee>.*?)[\r\n]+)((M(?<memo>.*?)[\r\n]+)?)(L(?<category>.*?)[\r\n]+)`
 		var tagRecordRegex string = `(?m)(^N(.*)\n^(D(.*)\n^)?\^\n)`
 		var tagBlockHeaderRegex string = `(?m)^!Type:Tag\n`
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
@@ -58,7 +68,9 @@ var tagsCmd = &cobra.Command{
 		// Load input file
 		inputBytes, err := os.ReadFile(inputFile)
 		if err != nil {
-			fmt.Println("Error reading file:", err)
+			// Carrying on would scan empty content and write an empty list
+			// while reporting success.
+			return fmt.Errorf("reading %q: %w", inputFile, err)
 		} else {
 			fmt.Printf("Input file opened. Length: %d\n", len(inputBytes))
 		}
@@ -76,12 +88,15 @@ var tagsCmd = &cobra.Command{
 		if loc == nil {
 			fmt.Printf("No Tag block found.\n")
 		} else {
-			// Debugging output
 			fmt.Printf("Tag block found at position: %d\n", loc[1])
 		}
 
 		// Find the position of the next Type block
-		restOfText := inputContent[loc[1]:]
+		var tagBlockEnd int
+		if loc != nil {
+			tagBlockEnd = loc[1]
+		}
+		restOfText := inputContent[tagBlockEnd:]
 		nextTypePattern := `(?mi)^\s*!Type:.*$`
 		nextTypeRe := regexp.MustCompile(nextTypePattern)
 		nextLoc := nextTypeRe.FindStringIndex(restOfText)
@@ -89,7 +104,7 @@ var tagsCmd = &cobra.Command{
 		if nextLoc != nil {
 			fmt.Printf("Next type found at:%d\n", nextLoc[1])
 			// Found another Type line.
-			endPos = loc[1] + nextLoc[0]
+			endPos = tagBlockEnd + nextLoc[0]
 		} else {
 			fmt.Printf("No next type block found.\n")
 			// No other Type found
@@ -97,7 +112,7 @@ var tagsCmd = &cobra.Command{
 		}
 
 		// Extract the text between the Type lines
-		textBetweenTypes := inputContent[loc[1]:endPos]
+		textBetweenTypes := inputContent[tagBlockEnd:endPos]
 
 		// Use the existing pattern to match entries
 		regex, _ := regexp.Compile(tagRecordRegex)
@@ -147,22 +162,34 @@ var tagsCmd = &cobra.Command{
 			textBetweenTypes := inputContent[accountBlock[1]:endPos]
 
 			// Use the existing pattern to match entries
-			regex, _ := regexp.Compile(transactionRegexString)
+			// QIF records are read field by field. A single pattern cannot express
+			// fields that are optional and may appear in any order, and the one
+			// used here silently skipped any record that did not fit.
+			var records []utils.TransactionFields
+			for _, record := range utils.SplitRecords(textBetweenTypes) {
+				// The next account's header block falls inside this account's text.
+				if strings.HasPrefix(strings.TrimSpace(record), "!") {
+					continue
+				}
+				fields := utils.ParseTransactionRecord(record)
+				if fields.Date == "" {
+					continue
+				}
+				records = append(records, fields)
+			}
 
-			// Find all matches in the content.
-			transactions := regex.FindAllStringSubmatch(textBetweenTypes, -1)
-			fmt.Printf("%d tags extracted from account: %s\n", len(transactions), accountName)
+			fmt.Printf("%d tags extracted from account: %s\n", len(records), accountName)
 
-			// Loop through matches and add categories to the array
-			for _, t := range transactions {
-				if len(t) > 1 {
-					_, tag := splitCategoryAndTag(t[20])
-					tag = strings.TrimSpace(tag)
-					if tag != "" {
-						// Remove double quotes
-						tag = strings.ReplaceAll(tag, "\"", "")
-						// Add tag to the list
-						tags = append(tags, tag)
+			// A split line carries a category, and so a tag, of its own.
+			for _, fields := range records {
+				raw := []string{fields.Category}
+				for _, split := range fields.Splits {
+					raw = append(raw, split.Category)
+				}
+
+				for _, value := range raw {
+					if _, tag := utils.SplitCategoryAndTag(value); tag != "" {
+						tags = append(tags, strings.ReplaceAll(tag, "\"", ""))
 					}
 				}
 			}
@@ -175,15 +202,13 @@ var tagsCmd = &cobra.Command{
 		case "JSON":
 			jsonData, err := json.MarshalIndent(outputTagList, "", "  ")
 			if err != nil {
-				fmt.Printf("Error marshaling JSON: %v\n", err)
-				return
+				return fmt.Errorf("encoding JSON: %w", err)
 			}
 			tagFile.Write(jsonData)
 		case "XML":
 			xmlData, err := xml.MarshalIndent(tagList{Tags: outputTagList}, "", "  ")
 			if err != nil {
-				fmt.Printf("Error marshaling XML: %v\n", err)
-				return
+				return fmt.Errorf("encoding XML: %w", err)
 			}
 			tagFile.Write([]byte(xml.Header))
 			tagFile.Write(xmlData)
@@ -197,6 +222,8 @@ var tagsCmd = &cobra.Command{
 		}
 
 		fmt.Println("Extracted Tags: ", len(outputTagList))
+
+		return nil
 	},
 }
 

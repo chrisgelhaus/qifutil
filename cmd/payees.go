@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
+Copyright © 2025 Chris Gelhaus
 */
 package cmd
 
@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"qifutil/pkg/utils"
 
 	"github.com/spf13/cobra"
 )
@@ -27,16 +29,24 @@ var payeesCmd = &cobra.Command{
 	Use:   "payees",
 	Short: "Extract payees from a QIF file",
 	Long:  `Extract payees from a QIF file.`,
-	PreRun: func(cmd *cobra.Command, args []string) {
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		if inputFile == "" {
-			fmt.Println("Error: Missing required flag --inputFile")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --inputFile")
 		}
+
+		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 
 		var payees []string
-		var transactionRegexString string = `D(?<month>\d{1,2})\/(\s?(?<day>\d{1,2}))'(?<year>\d{2})[\r\n]+(U(?<amount1>.*?)[\r\n]+)(T(?<amount2>.*?)[\r\n]+)(C(?<cleared>.*?)[\r\n]+)((N(?<number>.*?)[\r\n]+)?)(P(?<payee>.*?)[\r\n]+)((M(?<memo>.*?)[\r\n]+)?)(L(?<category>.*?)[\r\n]+)`
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
 		// Build output file path using outputPath if provided
@@ -50,14 +60,16 @@ var payeesCmd = &cobra.Command{
 		if err != nil {
 			fmt.Println("Error creating category file:", err)
 		} else {
-			fmt.Println("Created catergory output file.")
+			fmt.Println("Created payee output file.")
 		}
 		defer payeeFile.Close()
 
 		// Load input file
 		inputBytes, err := os.ReadFile(inputFile)
 		if err != nil {
-			fmt.Println("Error reading file:", err)
+			// Carrying on would scan empty content and write an empty list
+			// while reporting success.
+			return fmt.Errorf("reading %q: %w", inputFile, err)
 		} else {
 			fmt.Printf("Input file opened. Length: %d\n", len(inputBytes))
 		}
@@ -94,21 +106,26 @@ var payeesCmd = &cobra.Command{
 			textBetweenTypes := inputContent[accountBlock[1]:endPos]
 
 			// Use the existing pattern to match entries
-			regex, _ := regexp.Compile(transactionRegexString)
-
-			// Find all matches in the content.
-			transactions := regex.FindAllStringSubmatch(textBetweenTypes, -1)
-			fmt.Printf("%d payees extracted from account: %s\n", len(transactions), accountName)
-
-			// Loop through matches and add payees to the array
-			for _, t := range transactions {
-				if len(t) > 1 {
-					payee := strings.TrimSpace(t[15])
-					// Remove double quotes
-					payee = strings.ReplaceAll(payee, "\"", "")
-					// Add payee to the list
-					payees = append(payees, payee)
+			// QIF records are read field by field. A single pattern cannot express
+			// fields that are optional and may appear in any order, and the one
+			// used here silently skipped any record that did not fit.
+			var records []utils.TransactionFields
+			for _, record := range utils.SplitRecords(textBetweenTypes) {
+				// The next account's header block falls inside this account's text.
+				if strings.HasPrefix(strings.TrimSpace(record), "!") {
+					continue
 				}
+				fields := utils.ParseTransactionRecord(record)
+				if fields.Date == "" {
+					continue
+				}
+				records = append(records, fields)
+			}
+
+			fmt.Printf("%d payees extracted from account: %s\n", len(records), accountName)
+
+			for _, fields := range records {
+				payees = append(payees, strings.ReplaceAll(fields.Payee, "\"", ""))
 			}
 		}
 
@@ -119,15 +136,13 @@ var payeesCmd = &cobra.Command{
 		case "JSON":
 			jsonData, err := json.MarshalIndent(outputPayeeList, "", "  ")
 			if err != nil {
-				fmt.Printf("Error marshaling JSON: %v\n", err)
-				return
+				return fmt.Errorf("encoding JSON: %w", err)
 			}
 			payeeFile.Write(jsonData)
 		case "XML":
 			xmlData, err := xml.MarshalIndent(payeeList{Payees: outputPayeeList}, "", "  ")
 			if err != nil {
-				fmt.Printf("Error marshaling XML: %v\n", err)
-				return
+				return fmt.Errorf("encoding XML: %w", err)
 			}
 			payeeFile.Write([]byte(xml.Header))
 			payeeFile.Write(xmlData)
@@ -142,6 +157,8 @@ var payeesCmd = &cobra.Command{
 
 		fmt.Println("Unique Extracted Payees: ", len(outputPayeeList))
 
+
+		return nil
 	},
 }
 

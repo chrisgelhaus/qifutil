@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"qifutil/pkg/utils"
+
+	"github.com/spf13/cobra"
 )
 
 var generateBalanceHistory bool
@@ -60,29 +61,29 @@ TIPS:
   - If exceeded maxRecordsPerFile, creates _2.csv, _3.csv, etc.
   - Use list-accounts to find exact account names`,
 
-	PreRun: func(cmd *cobra.Command, args []string) {
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		// Validate input file exists
 		if inputFile == "" {
-			fmt.Println("Error: Missing required flag --inputFile")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --inputFile")
 		}
 
 		// Validate single account is specified
 		if selectedAccounts == "" {
-			fmt.Println("Error: balance-history requires exactly one account (--accounts)")
-			os.Exit(1)
+			return fmt.Errorf("balance-history requires exactly one account: pass --accounts")
 		}
 
 		accountList := strings.Split(selectedAccounts, ",")
 		if len(accountList) != 1 {
-			fmt.Println("Error: balance-history requires exactly one account. Multiple accounts specified.")
-			os.Exit(1)
+			return fmt.Errorf("balance-history requires exactly one account, got %d", len(accountList))
 		}
 
 		accountName := strings.TrimSpace(accountList[0])
 		if accountName == "" {
-			fmt.Println("Error: Account name cannot be empty")
-			os.Exit(1)
+			return fmt.Errorf("account name cannot be empty")
 		}
 
 		// Validate mutually exclusive balance options
@@ -90,13 +91,11 @@ TIPS:
 		hasOpeningBalance := openingBalance != ""
 
 		if !hasCurrentBalance && !hasOpeningBalance {
-			fmt.Println("Error: Either --currentBalance or --openingBalance must be specified")
-			os.Exit(1)
+			return fmt.Errorf("pass either --currentBalance or --openingBalance")
 		}
 
 		if hasCurrentBalance && hasOpeningBalance {
-			fmt.Println("Error: --currentBalance and --openingBalance are mutually exclusive. Use only one.")
-			os.Exit(1)
+			return fmt.Errorf("--currentBalance and --openingBalance are mutually exclusive")
 		}
 
 		// Validate balance is a valid number
@@ -106,22 +105,19 @@ TIPS:
 		}
 
 		if _, err := strconv.ParseFloat(balanceStr, 64); err != nil {
-			fmt.Printf("Error: Invalid balance value '%s': must be a valid number\n", balanceStr)
-			os.Exit(1)
+			return fmt.Errorf("invalid balance %q: must be a number", balanceStr)
 		}
 
 		// Validate date format if provided
 		dateFormat := "2006-01-02"
 		if startDate != "" {
 			if _, err := time.Parse(dateFormat, startDate); err != nil {
-				fmt.Println("Error: Invalid start date format. Use YYYY-MM-DD")
-				os.Exit(1)
+				return fmt.Errorf("invalid start date %q: use YYYY-MM-DD", startDate)
 			}
 		}
 		if endDate != "" {
 			if _, err := time.Parse(dateFormat, endDate); err != nil {
-				fmt.Println("Error: Invalid end date format. Use YYYY-MM-DD")
-				os.Exit(1)
+				return fmt.Errorf("invalid end date %q: use YYYY-MM-DD", endDate)
 			}
 		}
 		// Validate date range if both dates are provided
@@ -129,13 +125,14 @@ TIPS:
 			start, _ := time.Parse(dateFormat, startDate)
 			end, _ := time.Parse(dateFormat, endDate)
 			if end.Before(start) {
-				fmt.Println("Error: End date cannot be before start date")
-				os.Exit(1)
+				return fmt.Errorf("end date %s is before start date %s", endDate, startDate)
 			}
 		}
+
+		return nil
 	},
 
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Println("Starting balance history generation...")
 
 		// Initialize validation tracker
@@ -143,8 +140,7 @@ TIPS:
 
 		// Ensure we have a valid output path
 		if outputPath == "" {
-			fmt.Println("Error: No output path specified")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --outputPath")
 		}
 
 		// Clean and validate output path
@@ -153,22 +149,19 @@ TIPS:
 			var absErr error
 			outputPath, absErr = filepath.Abs(outputPath)
 			if absErr != nil {
-				fmt.Printf("Error with output path: %v\n", absErr)
-				os.Exit(1)
+				return fmt.Errorf("resolving output path %q: %w", outputPath, absErr)
 			}
 		}
 
 		// Create the output directory
 		fmt.Printf("Creating output directory: %s\n", outputPath)
 		if mkdirErr := os.MkdirAll(outputPath, 0755); mkdirErr != nil {
-			fmt.Printf("Error creating output directory: %v\n", mkdirErr)
-			os.Exit(1)
+			return fmt.Errorf("creating output directory %q: %w", outputPath, mkdirErr)
 		}
 
 		// Validate input file exists
 		if _, err := os.Stat(inputFile); os.IsNotExist(err) {
-			fmt.Printf("Error: Input file not found: %s\n", inputFile)
-			os.Exit(1)
+			return fmt.Errorf("input file not found: %s", inputFile)
 		}
 
 		// Get the account name (already validated to be single account)
@@ -177,8 +170,7 @@ TIPS:
 		// Load and parse QIF file
 		inputBytes, err := os.ReadFile(inputFile)
 		if err != nil {
-			fmt.Println("Error reading file:", err)
-			os.Exit(1)
+			return fmt.Errorf("reading %q: %w", inputFile, err)
 		}
 
 		fmt.Printf("Input file opened. Length: %d\n", len(inputBytes))
@@ -191,8 +183,7 @@ TIPS:
 		accountBlockHeaderRegex := `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 		regex, err := regexp.Compile(accountBlockHeaderRegex)
 		if err != nil {
-			fmt.Println("Error compiling regex:", err)
-			os.Exit(1)
+			return fmt.Errorf("compiling account block pattern: %w", err)
 		}
 
 		accountBlocks := regex.FindAllStringSubmatchIndex(inputContent, -1)
@@ -222,19 +213,25 @@ TIPS:
 		}
 
 		if !foundAccount {
-			fmt.Printf("Error: Account '%s' not found in file\n", accountName)
-			os.Exit(1)
+			return fmt.Errorf("account %q not found in %s", accountName, inputFile)
 		}
 
-		// Extract transactions for this account
-		transactionRegexString := `D(?<month>\d{1,2})\/(\s?(?<day>\d{1,2}))'(?<year>\d{2})[\r\n]+(U(?<amount1>.*?)[\r\n]+)(T(?<amount2>.*?)[\r\n]+)(C(?<cleared>.*?)[\r\n]+)((N(?<number>.*?)[\r\n]+)?)(P(?<payee>.*?)[\r\n]+)((M(?<memo>.*?)[\r\n]+)?)(L(?<category>.*?)[\r\n]+)`
-		transactionRegex, err := regexp.Compile(transactionRegexString)
-		if err != nil {
-			fmt.Println("Error compiling transaction regex:", err)
-			os.Exit(1)
+		// Extract transactions for this account. QIF records are read field by
+		// field: a single pattern cannot express fields that are optional and
+		// may appear in any order, and a record it failed to match was left out
+		// of the arithmetic, making the reported balance wrong.
+		var transactions []utils.TransactionFields
+		for _, record := range utils.SplitRecords(selectedBlockContent) {
+			// The next account's header block falls inside this account's text.
+			if strings.HasPrefix(strings.TrimSpace(record), "!") {
+				continue
+			}
+			fields := utils.ParseTransactionRecord(record)
+			if fields.Date == "" {
+				continue
+			}
+			transactions = append(transactions, fields)
 		}
-
-		transactions := transactionRegex.FindAllStringSubmatch(selectedBlockContent, -1)
 		fmt.Printf("Number of transactions found: %d\n", len(transactions))
 
 		// Build daily balance map
@@ -242,12 +239,9 @@ TIPS:
 		var dateKeys []string
 		dateKeySet := make(map[string]bool)
 
-		for _, t := range transactions {
-			if len(t) > 1 {
-				month := strings.TrimSpace(t[1])
-				day := strings.TrimSpace(t[2])
-				year := strings.TrimSpace(t[4])
-				amount := strings.TrimSpace(t[6])
+		for _, fields := range transactions {
+			{
+				amount := fields.Amount
 
 				// Remove commas from amount (for US-formatted numbers like 1,234.56)
 				amount = strings.ReplaceAll(amount, ",", "")
@@ -265,16 +259,15 @@ TIPS:
 					validator.AddZeroAmount()
 				}
 
-				// Format date
-				fullYear := "20" + year
-				month = "0" + month
-				fullMonth := month[len(month)-2:]
-				day = "0" + day
-				fullDay := day[len(day)-2:]
-				fullDate := fullYear + "-" + fullMonth + "-" + fullDay
+				// The separator before the year carries the century.
+				transDate, dateErr := utils.ParseQIFDateField(fields.Date)
+				if dateErr != nil {
+					fmt.Printf("Warning: Skipping transaction with unusable date: %v\n", dateErr)
+					continue
+				}
+				fullDate := transDate.Format("2006-01-02")
 
 				// Check date filtering
-				transDate, _ := time.Parse("2006-01-02", fullDate)
 				if startDate != "" {
 					startDateTime, _ := time.Parse("2006-01-02", startDate)
 					if transDate.Before(startDateTime) {
@@ -301,7 +294,7 @@ TIPS:
 
 		if len(dailyBalances) == 0 {
 			fmt.Println("Warning: No transactions found for balance history")
-			return
+			return nil
 		}
 
 		// Sort dates
@@ -344,7 +337,15 @@ TIPS:
 		// Write balance history files
 		fileIndex := 1
 		count := 0
-		outputFileName := fmt.Sprintf("%s_balance_history_%d.csv", accountName, fileIndex)
+
+		// The account name may hold characters a file name cannot. A colon is
+		// the dangerous one: NTFS reads the rest of the name as an alternate
+		// data stream, so the run looks successful and leaves nothing visible.
+		fileBase := utils.SanitizeFileName(accountName)
+		if fileBase != accountName {
+			fmt.Printf("Note: account %q is written to files named %q\n", accountName, fileBase)
+		}
+		outputFileName := fmt.Sprintf("%s_balance_history_%d.csv", fileBase, fileIndex)
 		fmt.Printf("\nGenerating balance history for %s (File %d)\n", accountName, fileIndex)
 
 		fullPath := filepath.Join(outputPath, outputFileName)
@@ -354,15 +355,13 @@ TIPS:
 
 		outputFile, err := os.Create(fullPath)
 		if err != nil {
-			fmt.Printf("Error creating file %s: %v\n", outputFileName, err)
-			os.Exit(1)
+			return fmt.Errorf("creating %s: %w", outputFileName, err)
 		}
 
 		// Write header
 		if _, err := outputFile.WriteString("Date,Balance\n"); err != nil {
 			outputFile.Close()
-			fmt.Printf("Error writing header to %s: %v\n", outputFileName, err)
-			os.Exit(1)
+			return fmt.Errorf("writing header to %s: %w", outputFileName, err)
 		}
 
 		// Write balance records
@@ -370,8 +369,7 @@ TIPS:
 			line := fmt.Sprintf("%s,%s\n", record.Date, record.Balance)
 			if _, err := outputFile.WriteString(line); err != nil {
 				outputFile.Close()
-				fmt.Printf("Error writing record to %s: %v\n", outputFileName, err)
-				os.Exit(1)
+				return fmt.Errorf("writing record to %s: %w", outputFileName, err)
 			}
 
 			count++
@@ -382,21 +380,19 @@ TIPS:
 
 				// Start new file
 				fileIndex++
-				outputFileName = fmt.Sprintf("%s_balance_history_%d.csv", accountName, fileIndex)
+				outputFileName = fmt.Sprintf("%s_balance_history_%d.csv", fileBase, fileIndex)
 				fmt.Printf("Creating continuation file: %s (File %d)\n", outputFileName, fileIndex)
 
 				fullPath := filepath.Join(outputPath, outputFileName)
 				outputFile, err = os.Create(fullPath)
 				if err != nil {
-					fmt.Printf("Error creating file %s: %v\n", outputFileName, err)
-					os.Exit(1)
+					return fmt.Errorf("creating %s: %w", outputFileName, err)
 				}
 
 				// Write header for new file
 				if _, err := outputFile.WriteString("Date,Balance\n"); err != nil {
 					outputFile.Close()
-					fmt.Printf("Error writing header to %s: %v\n", outputFileName, err)
-					os.Exit(1)
+					return fmt.Errorf("writing header to %s: %w", outputFileName, err)
 				}
 			}
 		}
@@ -437,6 +433,8 @@ TIPS:
 		if err := validator.WriteValidationLogWithName(outputPath, "balance_history_validation.log"); err != nil {
 			fmt.Printf("Warning: Could not write validation log: %v\n", err)
 		}
+
+		return nil
 	},
 }
 
@@ -452,6 +450,13 @@ func init() {
 	// Add command-specific flags
 	balanceHistoryCmd.Flags().StringVarP(&currentBalance, "currentBalance", "", "", "The ending account balance (as of the last transaction date). Use for backward calculation. Mutually exclusive with --openingBalance.")
 	balanceHistoryCmd.Flags().StringVarP(&openingBalance, "openingBalance", "", "", "The starting account balance (before the first transaction date). Use for forward calculation. Mutually exclusive with --currentBalance.")
+
+	// Shorthands for the flags shared with the root command. Declaring them
+	// locally shadows the persistent versions, which pflag then skips when
+	// merging, so -i and -o work here without colliding with the -o that names
+	// an output file on the list-style export commands.
+	balanceHistoryCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Path to input QIF file")
+	balanceHistoryCmd.Flags().StringVarP(&outputPath, "outputPath", "o", "", "Path to output directory")
 }
 
 // sortDates sorts a slice of date strings in YYYY-MM-DD format

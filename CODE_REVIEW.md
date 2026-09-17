@@ -1,189 +1,77 @@
-# QIFUTIL Code Review - Issue Status Update
+# QIFUTIL Code Review Status
 
-## ✅ CRITICAL ISSUES (FIXED)
+Current as of v1.10.0. `CODE_REVIEW_FINDINGS.md` is the older, longer write-up;
+where the two disagree, this file is right.
 
-### 1. **Nil Pointer Dereference in tags.go and categories.go** - FIXED ✅
-**Status:** RESOLVED
+## ✅ Fixed
 
-**Changes Made:**
-- `cmd/tags.go`: Added early `return` when Tag block not found (line 99)
-- `cmd/categories.go`: Added early `return` when Category block not found (line 98)
+| Issue | Where it was | Fixed in |
+|-------|--------------|----------|
+| Nil pointer from `FindStringIndex` | categories.go, tags.go | v1.10.0 |
+| Silent file creation errors | accounts, categories, payees, tags | v1.9.0 |
+| Ignored file read errors | list commands carried on with empty content | v1.10.0 |
+| Directory change pattern | transactions.go changed the process working directory | v1.10.0 |
+| `os.Exit()` throughout | 39 sites; only `Execute` still exits | v1.10.0 |
+| Unchecked date parsing | century read from the separator, bad dates reported | v1.10.0 |
+| Regex compiled inside the loop | the pattern is gone entirely | v1.10.0 |
+| No bounds check on regex matches | records are read by field code, not by group index | v1.10.0 |
+| Hard-coded date assembly | `utils.ParseQIFDate`, unit tested | v1.10.0 |
+| Resource leak when splitting files | error paths close the file and skip the account | v1.10.0 |
+| "catergory" typo | payees.go, categories.go | v1.9.0 |
 
-**Before:**
-```go
-if loc == nil {
-    fmt.Printf("No Tag block found.\n")
-}
-restOfText := inputContent[loc[1]:]  // ❌ CRASH if loc is nil
-```
+## 🟠 Open
 
-**After:**
-```go
-if loc == nil {
-    fmt.Printf("No Tag block found.\n")
-    return  // ✅ Early exit prevents crash
-}
-restOfText := inputContent[loc[1]:]
-```
+### Ignored regex compilation errors
+`regex, _ := regexp.Compile(...)` still discards the error in three places:
+`categories.go:115`, `payees.go:83`, `tags.go:118`. These patterns are constants,
+so a failure would be a defect in the program rather than bad input, but the
+error should be returned rather than dropped.
 
----
+### Validation reporting that never runs
+`PrintSummary` and the validation log have sections for duplicate transactions,
+unmapped values and unused mapping rules. None of the three is ever computed:
+`AddDuplicate`, `AddUnmatchedData` and `RecordUnusedMapping` have no callers. The
+tool reports that it checked for duplicates. It did not.
 
-### 2. **Silent File Creation Errors** - FIXED ✅
-**Status:** RESOLVED
+### `applyMapping` scans the map
+It iterates the whole mapping for every transaction instead of a map lookup, and
+prints a line per hit. On a real file that is tens of thousands of lines of
+output burying the summary.
 
-**Changes Made:**
-- `cmd/accounts.go`: Exit on file creation error instead of continuing
-- `cmd/categories.go`: Exit on file creation error + fixed typo "catergory" → "category"
-- `cmd/payees.go`: Exit on file creation error + fixed error message "category file" → "payee file"
-- `cmd/tags.go`: Exit on file creation error
+### Unknown `--csvColumns` names produce blank columns
+`buildCSVRow` falls through to an empty string for a name it does not recognise,
+so a typo yields a silently blank column. `--csvColumns` is also ignored without
+comment for JSON and XML.
 
-**Before:**
-```go
-accountFile, err := os.Create(outputFilePath)
-if err != nil {
-    fmt.Println("Error creating account file:", err)
-    // ❌ NO RETURN - continues to write to nil!
-} else {
-    fmt.Println("Created account output file,", accountOutputFile)
-}
-defer accountFile.Close()
-```
+### Money held in `float64`
+`balance-history` accumulates balances in `float64`. Over a long register the
+running total drifts. Integer cents is the usual fix.
 
-**After:**
-```go
-accountFile, err := os.Create(outputFilePath)
-if err != nil {
-    fmt.Println("Error creating account file:", err)
-    os.Exit(1)  // ✅ Exit immediately on error
-}
-fmt.Println("Created account output file,", accountOutputFile)
-defer accountFile.Close()
-```
+### CSV injection
+Values are quoted but not guarded against a leading `=`, `+` or `@`. Low risk for
+your own data, and note that a naive fix breaks negative amounts.
 
----
+### `friendlyError` is never called
+`cmd/errors.go` turns common failures into multi-line guidance and has no
+callers. Now that commands return errors there is somewhere to route them
+through.
 
-### 3. **Ignored File Read Errors** - FIXED ✅
-**Status:** RESOLVED
+### Empty `PostRun` hooks
+`accounts.go` and `export.go` define `PostRun` and `PersistentPostRun` bodies
+that do nothing.
 
-**Changes Made:**
-- `cmd/accounts.go`: Exit on read error instead of processing empty content
-- `cmd/categories.go`: Exit on read error
-- `cmd/payees.go`: Exit on read error
-- `cmd/tags.go`: Exit on read error
+### `go vet` failure in a test
+`pkg/config/config_test.go:270` has unreachable code. Worth fixing and wiring
+`go vet` into CI.
 
-**Before:**
-```go
-inputBytes, err := os.ReadFile(inputFile)
-if err != nil {
-    fmt.Println("Error reading file:", err)
-    // ❌ NO RETURN - processes empty content
-} else {
-    fmt.Printf("Input file opened. Length: %d\n", len(inputBytes))
-}
-inputContent := string(inputBytes)  // ← Empty if error occurred
-```
+## 🔵 Noted, not planned
 
-**After:**
-```go
-inputBytes, err := os.ReadFile(inputFile)
-if err != nil {
-    fmt.Println("Error reading file:", err)
-    os.Exit(1)  // ✅ Exit immediately on error
-}
-fmt.Printf("Input file opened. Length: %d\n", len(inputBytes))
-inputContent := string(inputBytes)
-```
+**Split transactions** are supported through `--expandSplits`. Without the flag a
+split still exports as a single row at the transaction total, which is the
+historical behaviour and is deliberate.
 
----
+**Mapping files are not validated** beyond skipping rows whose target is empty. A
+malformed row is ignored rather than reported.
 
-## 🟠 HIGH PRIORITY ISSUES (REMAINING)
-
-### 4. **Ignored Regex Compilation Errors**
-**Status:** NOT YET FIXED
-**Location:** Multiple files - `cmd/categories.go:125`, `cmd/payees.go:90`, `cmd/tags.go:131`, etc.
-
-**Problem:** Regex compilation errors are silently ignored:
-```go
-regex, _ := regexp.Compile(accountBlockHeaderRegex)
-// ← Error is discarded with blank identifier
-```
-
-**Recommendation:** Check and handle errors properly
-
----
-
-## 🟡 MEDIUM PRIORITY ISSUES (REMAINING)
-
-### 5. **Potential Nil Pointer from FindStringIndex**
-**Status:** NOT YET FIXED
-**Location:** `cmd/categories.go:105`, `cmd/payees.go:84`, `cmd/tags.go:100`
-
-**Problem:** While improved, code still assumes `nextLoc` behavior in edge cases
-
----
-
-### 6. **Directory Change Pattern (Fragile)**
-**Status:** NOT YET FIXED
-**Location:** `cmd/transactions.go:201-210`
-
-**Problem:** Changes working directory for process - problematic for concurrent operations
-
----
-
-### 7. **os.Exit() Pattern Throughout**
-**Status:** NOT YET FIXED
-**Location:** Throughout codebase
-
-**Problem:** `os.Exit()` bypasses defer statements
-
----
-
-## 🔵 LOWER PRIORITY / STYLE ISSUES (REMAINING)
-
-### 8. **Typo Fixed** ✅
-**Status:** RESOLVED (Fixed in payees.go and categories.go)
-- "catergory" → "category"
-- Error messages now correctly identify file types
-
----
-
-### 9. **Unused Variables and Dead Code**
-**Status:** NOT YET FIXED
-**Location:** Empty PostRun and PersistentPostRun functions in export commands
-
----
-
-## 📋 UPDATED SUMMARY TABLE
-
-| Issue | Severity | Status | Impact |
-|-------|----------|--------|--------|
-| Nil pointer in loc[1] | 🔴 Critical | ✅ FIXED | Crash if blocks missing |
-| Silent file creation errors | 🔴 Critical | ✅ FIXED | Data loss, crashes |
-| Ignored file read errors | 🔴 Critical | ✅ FIXED | Process garbage data |
-| Ignored regex errors | 🟠 High | ⏳ TODO | Crashes on bad regex |
-| Directory change pattern | 🟡 Medium | ⏳ TODO | Bad for concurrent use |
-| os.Exit() pattern | 🟡 Medium | ⏳ TODO | Skips defer cleanup |
-| Error message typos | 🔵 Low | ✅ FIXED | User confusion |
-| Unused code | 🔵 Low | ⏳ TODO | Code quality |
-
----
-
-## ✅ VERIFICATION
-
-**Build Status:** ✅ Successful
-**Test Results:** ✅ 20/20 tests passing (100%)
-**No regressions detected**
-
-**Date Fixed:** January 10, 2026
-**Tests Run Post-Fix:** All 20 tests passing
-
----
-
-## 📝 NEXT STEPS (If Continuing)
-
-1. Fix ignored regex compilation errors (HIGH priority)
-2. Consider consolidating error handling pattern
-3. Remove unused PostRun/PersistentPostRun functions
-4. Review remaining medium-priority issues if enhanced robustness is needed
-
-
+**`ValidationTracker` locking** is sound; the tracker is mutex guarded and the
+export is single threaded.

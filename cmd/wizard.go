@@ -40,19 +40,19 @@ func executeConversion(reader *bufio.Reader, exportTransactions, generateBalance
 		fmt.Printf("  • Account: %s\n", balanceHistoryAccount)
 	}
 
-	if categoryMappingFile != "" || payeeMappingFile != "" || accountMappingFile != "" || tagMappingFile != "" {
+	if categoryMapFile != "" || payeeMapFile != "" || accountMapFile != "" || tagMapFile != "" {
 		fmt.Println("- Mappings to apply:")
-		if categoryMappingFile != "" {
-			fmt.Printf("  • Categories: %s\n", categoryMappingFile)
+		if categoryMapFile != "" {
+			fmt.Printf("  • Categories: %s\n", categoryMapFile)
 		}
-		if payeeMappingFile != "" {
-			fmt.Printf("  • Payees: %s\n", payeeMappingFile)
+		if payeeMapFile != "" {
+			fmt.Printf("  • Payees: %s\n", payeeMapFile)
 		}
-		if accountMappingFile != "" {
-			fmt.Printf("  • Accounts: %s\n", accountMappingFile)
+		if accountMapFile != "" {
+			fmt.Printf("  • Accounts: %s\n", accountMapFile)
 		}
-		if tagMappingFile != "" {
-			fmt.Printf("  • Tags: %s\n", tagMappingFile)
+		if tagMapFile != "" {
+			fmt.Printf("  • Tags: %s\n", tagMapFile)
 		}
 	}
 
@@ -78,6 +78,7 @@ func executeConversion(reader *bufio.Reader, exportTransactions, generateBalance
 
 	// Run the transactions command with explicit arguments
 	transactionArgs := []string{
+		"export",
 		"transactions",
 		"--inputFile", inputFile,
 		"--outputPath", outputPath,
@@ -92,16 +93,16 @@ func executeConversion(reader *bufio.Reader, exportTransactions, generateBalance
 	if endDate != "" {
 		transactionArgs = append(transactionArgs, "--endDate", endDate)
 	}
-	if categoryMappingFile != "" {
-		transactionArgs = append(transactionArgs, "--categoryMapFile", categoryMappingFile)
+	if categoryMapFile != "" {
+		transactionArgs = append(transactionArgs, "--categoryMapFile", categoryMapFile)
 	}
-	if payeeMappingFile != "" {
-		transactionArgs = append(transactionArgs, "--payeeMapFile", payeeMappingFile)
+	if payeeMapFile != "" {
+		transactionArgs = append(transactionArgs, "--payeeMapFile", payeeMapFile)
 	}
-	if accountMappingFile != "" {
-		transactionArgs = append(transactionArgs, "--accountMapFile", accountMappingFile)
+	if accountMapFile != "" {
+		transactionArgs = append(transactionArgs, "--accountMapFile", accountMapFile)
 	}
-	if tagMappingFile != "" {
+	if tagMapFile != "" {
 		transactionArgs = append(transactionArgs, "--tagMapFile", tagMapFile)
 	}
 
@@ -147,16 +148,6 @@ func executeConversion(reader *bufio.Reader, exportTransactions, generateBalance
 	fmt.Println("\nConversion completed!")
 	// Only offer to save if not using a previously loaded config (which would be redundant)
 	if !usingLoadedConfig && getYesNoResponse(reader, "\nWould you like to save this configuration for future use? (y/n): ") {
-		fmt.Print("Enter a filename for the config (or press Enter for default 'wizard-config.json'): ")
-		configFilename, _ := reader.ReadString('\n')
-		configFilename = strings.TrimSpace(configFilename)
-		if configFilename == "" {
-			configFilename = "wizard-config.json"
-		}
-
-		// Save to output directory
-		configPath := filepath.Join(outputPath, configFilename)
-
 		cfg := &config.WizardConfig{
 			InputFile:             inputFile,
 			OutputPath:            outputPath,
@@ -167,19 +158,43 @@ func executeConversion(reader *bufio.Reader, exportTransactions, generateBalance
 			StartDate:             startDate,
 			EndDate:               endDate,
 			OutputFormat:          outputFormat,
-			CategoryMapFile:       categoryMappingFile,
-			PayeeMapFile:          payeeMappingFile,
-			AccountMapFile:        accountMappingFile,
-			TagMapFile:            tagMappingFile,
+			CategoryMapFile:       categoryMapFile,
+			PayeeMapFile:          payeeMapFile,
+			AccountMapFile:        accountMapFile,
+			TagMapFile:            tagMapFile,
 			AddTagForImport:       addTagForImport,
 			SkipZeroAmounts:       skipZeroAmountsLocal,
 		}
 
-		if err := cfg.SaveConfig(configPath); err != nil {
-			fmt.Printf("Warning: Could not save config: %v\n", err)
-		} else {
-			fmt.Printf("✓ Configuration saved to: %s\n", configPath)
-			fmt.Println("\nYou can reload this config later with: qifutil wizard")
+		for {
+			fmt.Print("Enter a filename or full path for the config (Enter for 'wizard-config.json', or 'cancel' to skip): ")
+			configFilename, _ := reader.ReadString('\n')
+			configFilename = strings.TrimSpace(configFilename)
+			configFilename = strings.Trim(configFilename, "\"")
+
+			if strings.ToLower(configFilename) == "cancel" {
+				fmt.Println("Config save cancelled.")
+				break
+			}
+			if configFilename == "" {
+				configFilename = "wizard-config.json"
+			}
+
+			var configPath string
+			if filepath.IsAbs(configFilename) {
+				configPath = configFilename
+			} else {
+				configPath = filepath.Join(outputPath, configFilename)
+			}
+
+			if err := cfg.SaveConfig(configPath); err != nil {
+				fmt.Printf("Error: Could not save config: %v\n", err)
+				fmt.Println("Please try a different path, or type 'cancel' to skip.")
+			} else {
+				fmt.Printf("✓ Configuration saved to: %s\n", configPath)
+				fmt.Println("\nYou can reload this config later with: qifutil wizard")
+				break
+			}
 		}
 	}
 }
@@ -291,7 +306,7 @@ It will ask you questions and help you create the right command for your needs.`
 
 		// Get output location
 		fmt.Print("\nStep 2: Where should I save the converted files? (e.g., C:\\export\\): ")
-		outputPath, _ := reader.ReadString('\n')
+		outputPath, _ = reader.ReadString('\n')
 		outputPath = strings.TrimSpace(outputPath)
 		outputPath = strings.TrimPrefix(outputPath, "& ") // Remove PowerShell invoke operator
 		outputPath = strings.Trim(outputPath, "'\"")      // Remove quotes
@@ -567,13 +582,6 @@ func captureOutput(f func()) string {
 	os.Stdout = old
 
 	return string(out)
-}
-
-func ifEmpty(str, fallback string) string {
-	if str == "" {
-		return fallback
-	}
-	return str
 }
 
 // parseAccountList extracts account names from the account listing output

@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
+Copyright © 2025 Chris Gelhaus
 */
 package cmd
 
@@ -28,13 +28,22 @@ var accountsCmd = &cobra.Command{
 	Use:   "accounts",
 	Short: "Extract account names from a QIF file",
 	Long:  `Extract account names from a QIF file.`,
-	PreRun: func(cmd *cobra.Command, args []string) {
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		if inputFile == "" {
-			fmt.Println("Error: Missing required flag --inputFile")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --inputFile")
 		}
+
+		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 
 		var accountNames []string
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
@@ -57,7 +66,9 @@ var accountsCmd = &cobra.Command{
 		// Load input file
 		inputBytes, err := os.ReadFile(inputFile)
 		if err != nil {
-			fmt.Println("Error reading file:", err)
+			// Carrying on would scan empty content and write an empty list
+			// while reporting success.
+			return fmt.Errorf("reading %q: %w", inputFile, err)
 		} else {
 			fmt.Printf("Input file opened. Length: %d\n", len(inputBytes))
 		}
@@ -93,15 +104,13 @@ var accountsCmd = &cobra.Command{
 		case "JSON":
 			jsonData, err := json.MarshalIndent(outputAccountList, "", "  ")
 			if err != nil {
-				fmt.Printf("Error marshaling JSON: %v\n", err)
-				return
+				return fmt.Errorf("encoding JSON: %w", err)
 			}
 			accountFile.Write(jsonData)
 		case "XML":
 			xmlData, err := xml.MarshalIndent(accountList{Accounts: outputAccountList}, "", "  ")
 			if err != nil {
-				fmt.Printf("Error marshaling XML: %v\n", err)
-				return
+				return fmt.Errorf("encoding XML: %w", err)
 			}
 			accountFile.Write([]byte(xml.Header))
 			accountFile.Write(xmlData)
@@ -116,6 +125,8 @@ var accountsCmd = &cobra.Command{
 
 		fmt.Println("Extracted Account: ", len(outputAccountList))
 
+
+		return nil
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 	},

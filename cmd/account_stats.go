@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
+Copyright © 2025 Chris Gelhaus
 */
 package cmd
 
@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
+	"qifutil/pkg/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -49,17 +49,18 @@ TIPS:
   - Account names are case-sensitive
   - Use quotes around account names with spaces`,
 
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		if inputFile == "" {
-			fmt.Println("Error: Missing required flag --inputFile")
-			fmt.Println("Usage: qifutil account-stats -i <qif-file> [-a <account-names>]")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --inputFile")
 		}
 
 		// Validate input file exists
 		if _, err := os.Stat(inputFile); os.IsNotExist(err) {
-			fmt.Printf("Error: Input file not found: %s\n", inputFile)
-			os.Exit(1)
+			return fmt.Errorf("input file not found: %s", inputFile)
 		}
 
 		fmt.Printf("Analyzing accounts in %s...\n\n", inputFile)
@@ -67,8 +68,7 @@ TIPS:
 		// Load input file
 		inputBytes, err := os.ReadFile(inputFile)
 		if err != nil {
-			fmt.Printf("Error reading file: %v\n", err)
-			return
+			return fmt.Errorf("reading %q: %w", inputFile, err)
 		}
 
 		inputContent := string(inputBytes)
@@ -88,26 +88,23 @@ TIPS:
 		accountBlockHeaderRegex := `!Account\nN(.*?)\nT(.*?)\n\^\n!Type:(.*?)\n`
 		regex, err := regexp.Compile(accountBlockHeaderRegex)
 		if err != nil {
-			fmt.Println("Error compiling regex:", err)
-			return
+			return fmt.Errorf("compiling account block pattern: %w", err)
 		}
 
-		// Transaction regex - only match dates
-		transactionRegex := regexp.MustCompile(`D(\d{1,2})/(\d{1,2})'(\d{2})`)
-
-		// Find all account blocks
-		accountBlocks := regex.FindAllStringSubmatch(inputContent, -1)
-		if len(accountBlocks) == 0 {
+		// Find all account blocks with positions
+		accountBlocksIdx := regex.FindAllStringSubmatchIndex(inputContent, -1)
+		if len(accountBlocksIdx) == 0 {
 			fmt.Println("No accounts found in the file.")
-			return
+			return nil
 		}
 
 		fmt.Printf("Account Statistics from %s:\n\n", inputFile)
 
 		// Process each account
-		for _, block := range accountBlocks {
-			accountName := strings.TrimSpace(block[1]) // Name group
-			accountType := strings.TrimSpace(block[3]) // AccountType group
+		for i, blockIdx := range accountBlocksIdx {
+			// Groups: [0,1]=full [2,3]=name [4,5]=type-letter [6,7]=account-type
+			accountName := strings.TrimSpace(inputContent[blockIdx[2]:blockIdx[3]])
+			accountType := strings.TrimSpace(inputContent[blockIdx[6]:blockIdx[7]])
 
 			// Skip if not in selected accounts
 			if len(selectedAccountList) > 0 {
@@ -124,52 +121,61 @@ TIPS:
 			}
 
 			// Find transactions in the section following this account
-			loc := regex.FindStringIndex(inputContent)
-			if loc == nil {
-				continue
-			}
-
-			nextAccountLoc := regex.FindStringIndex(inputContent[loc[1]:])
-			var accountContent string
-			if nextAccountLoc != nil {
-				accountContent = inputContent[loc[1] : loc[1]+nextAccountLoc[0]]
+			var endPos int
+			if i+1 < len(accountBlocksIdx) {
+				endPos = accountBlocksIdx[i+1][0]
 			} else {
-				accountContent = inputContent[loc[1]:]
+				endPos = len(inputContent)
+			}
+			accountContent := inputContent[blockIdx[1]:endPos]
+
+			// QIF records are read field by field: a single pattern cannot
+			// express fields that are optional and may appear in any order, and
+			// the separator before the year carries the century.
+			transactionCount := 0
+			var dates []time.Time
+			for _, record := range utils.SplitRecords(accountContent) {
+				// The next account's header block falls inside this account's text.
+				if strings.HasPrefix(strings.TrimSpace(record), "!") {
+					continue
+				}
+				fields := utils.ParseTransactionRecord(record)
+				if fields.Date == "" {
+					continue
+				}
+
+				transactionCount++
+				if date, err := utils.ParseQIFDateField(fields.Date); err == nil {
+					dates = append(dates, date)
+				}
 			}
 
-			// Find all transactions
-			transactions := transactionRegex.FindAllStringSubmatch(accountContent, -1)
-
-			// Process transactions
 			stats := AccountStats{
 				Name:             accountName,
 				Type:             accountType,
-				TransactionCount: len(transactions),
-				EarliestDate:     time.Date(2099, 12, 31, 0, 0, 0, 0, time.UTC),
-				LatestDate:       time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC),
-			} // Process dates if we have transactions
+				TransactionCount: transactionCount,
+			}
+
 			if stats.TransactionCount > 0 {
-				for _, t := range transactions {
-					// Process date
-					month, _ := strconv.Atoi(t[1])
-					day, _ := strconv.Atoi(t[2])
-					year, _ := strconv.Atoi("20" + t[3])
-					date := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
-
-					if date.Before(stats.EarliestDate) {
-						stats.EarliestDate = date
-					}
-					if date.After(stats.LatestDate) {
-						stats.LatestDate = date
-					}
-				}
-
-				// Print statistics
 				fmt.Printf("Account: %s (Type: %s)\n", stats.Name, stats.Type)
 				fmt.Printf("  Transactions: %d\n", stats.TransactionCount)
-				fmt.Printf("  Date Range: %s to %s\n",
-					stats.EarliestDate.Format("2006-01-02"),
-					stats.LatestDate.Format("2006-01-02"))
+
+				// A date that cannot be read leaves the range narrower rather
+				// than dragging it to a sentinel year.
+				if len(dates) > 0 {
+					stats.EarliestDate, stats.LatestDate = dates[0], dates[0]
+					for _, date := range dates[1:] {
+						if date.Before(stats.EarliestDate) {
+							stats.EarliestDate = date
+						}
+						if date.After(stats.LatestDate) {
+							stats.LatestDate = date
+						}
+					}
+					fmt.Printf("  Date Range: %s to %s\n",
+						stats.EarliestDate.Format("2006-01-02"),
+						stats.LatestDate.Format("2006-01-02"))
+				}
 				fmt.Println()
 			} else {
 				// Print statistics for accounts with no transactions
@@ -177,6 +183,8 @@ TIPS:
 				fmt.Printf("  No transactions found\n\n")
 			}
 		}
+
+		return nil
 	},
 }
 

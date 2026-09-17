@@ -1,14 +1,15 @@
 # QIFUTIL
 
-**Latest Update (v1.9.0):** Improved QIF parsing, validation logging, and mapping reliability!
-- 📊 **Enhanced QIF Compatibility** - Fixed regex to properly handle real Quicken exports where payee fields are optional, now captures 100% of transactions
-- 🔍 **Detailed Validation Logging** - Transaction-specific validation logs show exactly which transactions have issues (zero amounts, missing data, etc.)
-- ✨ **Mapping File Robustness** - Fixed mapping files to skip empty entries created by Excel, preventing data loss
-- 🚀 **Zero-Amount Filtering** - New `--skipZeroAmounts` flag to exclude zero transactions with detailed reporting
-- 💾 **Better Config Flow** - Skip redundant save prompts when reusing loaded configurations
-- 📋 **Previous (v1.8.4):** Standardized amount formatting, data validation warnings, config file support
+**Latest Update (v1.10.0):** Transactions that were being silently dropped are now exported, and failures are reported instead of passing unnoticed.
+- 🧾 **QIF read field by field** - records are no longer matched against one rigid pattern, so transactions missing optional fields, or writing them in a different order, are no longer skipped without a word. The sample file in this repository exported 53 of its 58 transactions before this change.
+- 🗂️ **`--preserveOriginalCategory`** - append the pre-mapping category to Notes, so `Insurance` can be traced back to `Insurance:Auto` after import
+- ✂️ **`--expandSplits`** - export each line item of a split transaction as its own row, keeping its own category and amount
+- 📅 **Dates before 2000** - the separator before the year carries the century, so 1990s registers are no longer lost
+- 📁 **Account names in file names** - characters a file name cannot hold are replaced rather than failing the run or, in the case of a colon, hiding the data in an NTFS alternate data stream
+- ⚠️ **Failures are reported** - commands return errors instead of ending the process, so nothing fails quietly and every failure path can be tested
+- 📋 **Previous (v1.9.0):** Improved QIF parsing, validation logging, and mapping reliability
 
-Core improvements: Better real-world QIF support, more reliable parsing, improved mapping file handling, detailed validation reporting for debugging data issues.
+Core improvements: correct parsing of real-world QIF, no silent data loss, and failures that say so.
 
 ## Quick Start Guide
 
@@ -41,7 +42,7 @@ qifutil transactions --inputFile "C:\Users\YourName\Downloads\MyData.QIF" --outp
 qifutil transactions --inputFile "MyData.QIF" --outputPath "export/" --accountMapFile "account_mappings.csv" --skipZeroAmounts
 
 # Just see what accounts are in your file
-qifutil list accounts --inputFile "C:\Users\YourName\Downloads\MyData.QIF"
+qifutil list-accounts --inputFile "C:\Users\YourName\Downloads\MyData.QIF"
 ```
 
 Need help? Type `qifutil --help` or see the detailed instructions below.
@@ -99,7 +100,7 @@ To use QIFUTIL, run the executable with the desired options.
 To export the list of accounts, use the following command:
 
 ```sh
-qifutil export accounts --inputFile "AllAccounts.QIF" --output "accounts.csv"
+qifutil export accounts --inputFile "AllAccounts.QIF" --outputFile "accounts.csv"
 ```
 Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`).
 
@@ -107,7 +108,7 @@ Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`)
 To export the list of categories, use the following command:
 
 ```sh
-qifutil export categories --inputFile "AllAccounts.QIF" --output "categories.csv"
+qifutil export categories --inputFile "AllAccounts.QIF" --outputFile "categories.csv"
 ```
 Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`).
 
@@ -115,7 +116,7 @@ Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`)
 To export the list of payees, use the following command:
 
 ```sh
-qifutil export payees --inputFile "AllAccounts.QIF" --output "payees.csv"
+qifutil export payees --inputFile "AllAccounts.QIF" --outputFile "payees.csv"
 ```
 Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`).
 
@@ -123,7 +124,7 @@ Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`)
 To export the list of tags, use the following command:
 
 ```sh
-qifutil export tags --inputFile "AllAccounts.QIF" --output "tags.csv"
+qifutil export tags --inputFile "AllAccounts.QIF" --outputFile "tags.csv"
 ```
 Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`).
 
@@ -131,7 +132,7 @@ Use the `--outputFormat` flag to specify `CSV`, `JSON`, or `XML` (default `CSV`)
 To see all accounts in your QIF file:
 
 ```sh
-qifutil list accounts --inputFile "AllAccounts.QIF"
+qifutil list-accounts --inputFile "AllAccounts.QIF"
 ```
 
 ### View Account Statistics
@@ -161,6 +162,9 @@ You can customize your transaction export with the following options:
 - `--endDate`: Filter transactions until this date (YYYY-MM-DD)
 - `--outputFormat`: Choose CSV (default), JSON, XML, or MONARCH
 - `--skipZeroAmounts`: Skip transactions with zero amount (0.00 or 0) - useful for cleaning data
+- `--preserveOriginalCategory`: When a category mapping rewrites a category, append the original to the Notes field so it can be traced back after import
+- `--expandSplits`: Export each line item of a split transaction as its own row, keeping its own category and amount
+- `--addTagForImport`: Tag every transaction with `QIFIMPORT`. **On by default** - pass `--addTagForImport=false` to export without it
 - `--categoryMapFile`: Map categories using a CSV file
 - `--accountMapFile`: Map account names using a CSV file
 - `--payeeMapFile`: Map payee names using a CSV file
@@ -381,6 +385,67 @@ qifutil export transactions --inputFile "data.qif" --outputPath "export/" \
 - Unmapped values pass through unchanged
 - Comment your mappings with descriptive source names
 
+### Preserving the Original Category
+
+Category mappings are destructive: once `Insurance:Auto` has been collapsed into
+`Insurance`, the original is gone from the export. If you need to trace a
+transaction back to the category Quicken actually had, add
+`--preserveOriginalCategory`:
+
+```bash
+qifutil export transactions --inputFile "MyData.QIF" --outputPath "export/" \
+  --categoryMapFile "category_mappings.csv" --preserveOriginalCategory
+```
+
+The pre-mapping category is appended to the `Notes` field in square brackets,
+after any existing memo:
+
+| Category | Notes |
+| --- | --- |
+| `Insurance` | `Semi-annual premium [Original Category: Insurance:Auto]` |
+| `Insurance` | `[Original Category: Insurance:Home]` |
+
+Notes is a field Monarch Money imports, so the reference survives the import and
+is searchable afterwards.
+
+The note is added only when a mapping actually changed the category - rows that
+pass through unmapped are left alone. The flag applies to the CSV, MONARCH and
+JSON output formats and is off by default.
+
+### Split Transactions
+
+A split transaction records several categorised line items under one entry. By
+default the export writes a single row carrying the transaction total and its
+top level category, so a $100 shop divided between groceries and household goods
+arrives as $100 of groceries - and if the top level category matches neither
+line item, the row is filed under a category the transaction never used.
+
+Pass `--expandSplits` to export each line item as its own row:
+
+```bash
+qifutil export transactions -i "MyData.QIF" -o "export/" \
+  --expandSplits
+```
+
+| Category | Notes | Amount |
+| --- | --- | --- |
+| `Food:Groceries` | `Groceries portion` | `-60.00` |
+| `Shopping:Home` | `Household portion` | `-40.00` |
+
+Each row keeps the parent transaction's date, payee and account. The parent row
+is not written as well, so the account total is unchanged. A line item with no
+memo of its own inherits the transaction memo, and a category written as
+`Food:Groceries/Vacation` still yields the `Vacation` tag.
+
+If the line items do not add up to the transaction total, the rows are still
+exported and the difference is reported:
+
+```
+Warning: splits for 2023-01-05 "Superstore" do not sum to the transaction total; difference -10.00
+```
+
+Without the flag, split transactions export exactly as they did before.
+
 ## Testing
 
 QIFUTIL includes a comprehensive test suite to ensure reliability and correctness. The test framework consists of:
@@ -453,6 +518,85 @@ The test suite covers:
 - Utility functions
 
 ## Recent Improvements
+
+### ✅ QIF Read Field by Field (v1.10.0)
+**Fix:** Transactions were being dropped without any report.
+
+QIF was matched against a single regular expression that required `D`, `U`, `T`,
+`C` and `L` to be present and in that order. Real files do not work that way: `U`
+is a Quicken extension many writers omit, `C` and `L` are optional, and field
+order is not fixed. Records that did not match were skipped silently.
+
+```
+sample.qif before:  Number of transactions found: 53
+sample.qif after:   Number of transactions found: 58
+```
+
+The five records recovered from this repository's own sample file all write the
+payee before the number. Records are now split on the `^` terminator and read by
+field code, so order does not matter and optional fields may be absent. The same
+pattern had been copied into `categories`, `payees`, `tags`, `account-stats` and
+`balance-history`; all are converted. `balance-history` was the worst affected,
+since a record it could not read was left out of the arithmetic and the balance
+it reported was wrong.
+
+### ✅ Split Transactions (v1.10.0)
+**Enhancement:** `--expandSplits` exports each line item as its own row.
+
+A $100 shop split between groceries and household goods was exported as one row
+of $100 under the top level category. With the flag, each line item keeps its own
+category, amount and memo, and the account total is unchanged because the parent
+row is not written as well.
+
+### ✅ Original Category Preserved (v1.10.0)
+**Enhancement:** `--preserveOriginalCategory` records what a mapping replaced.
+
+```
+Category: Insurance
+Notes:    Semi-annual premium [Original Category: Insurance:Auto]
+```
+
+Notes is a field Monarch Money imports, so the reference survives the import.
+
+### ✅ Dates Before 2000 (v1.10.0)
+**Fix:** 1990s transactions were dropped entirely.
+
+Quicken marks the century with the separator before the year, a slash for the
+1900s and an apostrophe for the 2000s. Only the apostrophe form was matched and
+the year was pasted onto a fixed `20` prefix. Four digit years and Quicken's
+space padding are also handled now.
+
+### ✅ Account Names in File Names (v1.10.0)
+**Fix:** Some account names failed the export or hid the output.
+
+`Amex / Joint` ended the whole run with a path error. `Fidelity: Roth` reported
+no error at all: NTFS read the colon as an alternate data stream, so the export
+left an empty file named `Fidelity` with the CSV hidden inside it. Forbidden
+characters are now replaced and the substitution reported, and a write failure
+skips that account rather than ending the export.
+
+### ✅ Failures Are Reported (v1.10.0)
+**Fix:** Commands return errors instead of ending the process.
+
+Thirty-nine failure paths called `os.Exit`, which made every one of them
+impossible to test. Exit status is unchanged, but errors now print as
+`Error: <message>` and usage text is no longer dumped when an export fails.
+
+Separately, the `categories`, `payees`, `tags` and `accounts` commands printed a
+read failure and then carried on, writing an empty list and reporting success.
+
+### ✅ XML Output Is XML (v1.10.0)
+**Fix:** The XML format emitted CSV rows under an XML declaration.
+
+Records were collected only for JSON, so the XML marshalling had nothing to write
+and every transaction fell through to the CSV writer.
+
+### ✅ Wizard Mapping Files (v1.10.0)
+**Fix:** The wizard discarded every mapping file it asked for.
+
+It prompted for all four, accepted the paths, and exported unmapped, because the
+paths were collected into local variables while the export read package level
+ones that nothing set.
 
 ### ✅ Standardized Amount Formatting (v1.8.4)
 **Enhancement:** All exported amounts now use consistent 2-decimal formatting.
