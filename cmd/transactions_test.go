@@ -32,7 +32,7 @@ func TestMonarchFormat(t *testing.T) {
 	outputPath = outputDir
 
 	helper.CaptureOutput(func() {
-		transactionsCmd.Run(transactionsCmd, []string{})
+		runExport(t)
 	})
 
 	checkingFile := filepath.Join(outputDir, "Checking Account_1.csv")
@@ -75,7 +75,7 @@ func TestCSVCustomColumns(t *testing.T) {
 	outputPath = outputDir
 
 	helper.CaptureOutput(func() {
-		transactionsCmd.Run(transactionsCmd, []string{})
+		runExport(t)
 	})
 
 	checkingFile := filepath.Join(outputDir, "Checking Account_1.csv")
@@ -118,7 +118,7 @@ func TestCSVMinimalColumns(t *testing.T) {
 	outputPath = outputDir
 
 	helper.CaptureOutput(func() {
-		transactionsCmd.Run(transactionsCmd, []string{})
+		runExport(t)
 	})
 
 	checkingFile := filepath.Join(outputDir, "Checking Account_1.csv")
@@ -157,7 +157,7 @@ func TestCSVDefaultEqualsMonarch(t *testing.T) {
 	outputPath = outputDirA
 
 	helper.CaptureOutput(func() {
-		transactionsCmd.Run(transactionsCmd, []string{})
+		runExport(t)
 	})
 
 	// Generate output with CSV format (using defaults)
@@ -170,7 +170,7 @@ func TestCSVDefaultEqualsMonarch(t *testing.T) {
 	outputPath = outputDirB
 
 	helper.CaptureOutput(func() {
-		transactionsCmd.Run(transactionsCmd, []string{})
+		runExport(t)
 	})
 
 	// Compare the two outputs
@@ -230,7 +230,7 @@ func exportSampleDir(t *testing.T, helper *test.TestHelper, tempDir string) stri
 	outputPath = outputDir
 
 	helper.CaptureOutput(func() {
-		transactionsCmd.Run(transactionsCmd, []string{})
+		runExport(t)
 	})
 
 	return outputDir
@@ -249,6 +249,16 @@ func writeMappingFile(t *testing.T, dir, name, contents string) string {
 		t.Fatalf("failed to write mapping file %s: %v", path, err)
 	}
 	return path
+}
+
+// runExport runs the transactions command and fails the test if it reports
+// an error. The command returns errors now rather than calling os.Exit, so a
+// failure is visible here instead of taking the test binary down.
+func runExport(t *testing.T) {
+	t.Helper()
+	if err := transactionsCmd.RunE(transactionsCmd, []string{}); err != nil {
+		t.Fatalf("export failed: %v", err)
+	}
 }
 
 // countLinesContaining reports how many lines of content contain needle.
@@ -368,7 +378,7 @@ func TestPreserveOriginalCategorySkipsNoteWhenOriginalIsBlank(t *testing.T) {
 	outputPath = outputDir
 
 	helper.CaptureOutput(func() {
-		transactionsCmd.Run(transactionsCmd, []string{})
+		runExport(t)
 	})
 
 	line := lineContaining(t, filepath.Join(outputDir, "Test Account_1.csv"), "Some Store")
@@ -515,7 +525,7 @@ func TestNineteenHundredsDatesAreExported(t *testing.T) {
 	outputPath = outputDir
 
 	helper.CaptureOutput(func() {
-		transactionsCmd.Run(transactionsCmd, []string{})
+		runExport(t)
 	})
 
 	checkingFile := filepath.Join(outputDir, "Test Account_1.csv")
@@ -600,7 +610,7 @@ POnly T and P
 	outputPath = outputDir
 
 	helper.CaptureOutput(func() {
-		transactionsCmd.Run(transactionsCmd, []string{})
+		runExport(t)
 	})
 
 	checkingFile := filepath.Join(outputDir, "Checking_1.csv")
@@ -662,7 +672,7 @@ func exportInlineQIF(t *testing.T, helper *test.TestHelper, tempDir, qif string)
 	outputPath = outputDir
 
 	out := helper.CaptureOutput(func() {
-		transactionsCmd.Run(transactionsCmd, []string{})
+		runExport(t)
 	})
 	return out, outputDir
 }
@@ -864,7 +874,7 @@ func TestOneUnwritableAccountDoesNotAbortTheExport(t *testing.T) {
 	inputFile = sourceFile
 	outputPath = outputDir
 	output := helper.CaptureOutput(func() {
-		transactionsCmd.Run(transactionsCmd, []string{})
+		runExport(t)
 	})
 
 	// The accounts after the failure must still be exported.
@@ -895,7 +905,7 @@ func TestAccountHeadersAreNotCountedAsUndatedRecords(t *testing.T) {
 	outputPath = outputDir
 
 	output := helper.CaptureOutput(func() {
-		transactionsCmd.Run(transactionsCmd, []string{})
+		runExport(t)
 	})
 
 	if strings.Contains(output, "had no date") {
@@ -931,5 +941,73 @@ func TestImportTagIsNotReportedWhenDisabled(t *testing.T) {
 
 	if strings.Contains(output, "QIFIMPORT") {
 		t.Errorf("nothing should mention the tag when it is off, got:\n%s", output)
+	}
+}
+
+// TestExportReportsFailuresInsteadOfExiting covers the failure paths directly.
+// They used to end in os.Exit, which took the test binary down with them, so
+// none of them could be asserted on at all.
+func TestExportReportsFailuresInsteadOfExiting(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(t *testing.T, tempDir string)
+		wantErr string
+	}{
+		{
+			name:    "no input file",
+			setup:   func(t *testing.T, tempDir string) { inputFile = "" },
+			wantErr: "missing required flag --inputFile",
+		},
+		{
+			name: "input file does not exist",
+			setup: func(t *testing.T, tempDir string) {
+				inputFile = filepath.Join(tempDir, "absent.qif")
+			},
+			wantErr: "input file not found",
+		},
+		{
+			name: "no output path",
+			setup: func(t *testing.T, tempDir string) {
+				outputPath = ""
+			},
+			wantErr: "missing required flag --outputPath",
+		},
+		{
+			name: "category mapping file cannot be read",
+			setup: func(t *testing.T, tempDir string) {
+				categoryMappingFile = filepath.Join(tempDir, "absent.csv")
+			},
+			wantErr: "loading category mapping",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			helper := test.NewHelper(t)
+			tempDir := helper.CreateTempDir()
+			setupTransactionExport(t)
+
+			sourceFile := filepath.Join(tempDir, "sample.qif")
+			helper.CopyTestData("sample.qif", sourceFile)
+			inputFile = sourceFile
+			outputPath = filepath.Join(tempDir, "output")
+			tt.setup(t, tempDir)
+
+			var err error
+			helper.CaptureOutput(func() {
+				if tt.wantErr == "missing required flag --inputFile" {
+					err = transactionsCmd.PreRunE(transactionsCmd, []string{})
+					return
+				}
+				err = transactionsCmd.RunE(transactionsCmd, []string{})
+			})
+
+			if err == nil {
+				t.Fatalf("expected an error mentioning %q, got nil", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to mention %q", err, tt.wantErr)
+			}
+		})
 	}
 }

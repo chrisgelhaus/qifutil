@@ -151,10 +151,14 @@ MAPPING FILES:
   Example category mapping:
   "Groceries","Food:Groceries"
   "Gas","Transportation:Fuel"`,
-	PreRun: func(cmd *cobra.Command, args []string) {
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		// Past flag parsing, a failure is about the data rather than how the
+		// command was called, so cobra should print the error without the usage
+		// text. A bad flag still gets usage, because that is decided earlier.
+		cmd.SilenceUsage = true
+
 		if inputFile == "" {
-			fmt.Println("Error: Missing required flag --inputFile")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --inputFile")
 		}
 
 		// Validate selected accounts format if provided
@@ -162,8 +166,7 @@ MAPPING FILES:
 			accounts := strings.Split(selectedAccounts, ",")
 			for _, account := range accounts {
 				if strings.TrimSpace(account) == "" {
-					fmt.Println("Error: Invalid account name in --accounts flag")
-					os.Exit(1)
+					return fmt.Errorf("invalid account name in --accounts flag")
 				}
 			}
 		}
@@ -172,14 +175,12 @@ MAPPING FILES:
 		dateFormat := "2006-01-02"
 		if startDate != "" {
 			if _, err := time.Parse(dateFormat, startDate); err != nil {
-				fmt.Println("Error: Invalid start date format. Use YYYY-MM-DD")
-				os.Exit(1)
+				return fmt.Errorf("invalid start date %q: use YYYY-MM-DD", startDate)
 			}
 		}
 		if endDate != "" {
 			if _, err := time.Parse(dateFormat, endDate); err != nil {
-				fmt.Println("Error: Invalid end date format. Use YYYY-MM-DD")
-				os.Exit(1)
+				return fmt.Errorf("invalid end date %q: use YYYY-MM-DD", endDate)
 			}
 		}
 		// Validate date range if both dates are provided
@@ -187,18 +188,18 @@ MAPPING FILES:
 			start, _ := time.Parse(dateFormat, startDate)
 			end, _ := time.Parse(dateFormat, endDate)
 			if end.Before(start) {
-				fmt.Println("Error: End date cannot be before start date")
-				os.Exit(1)
+				return fmt.Errorf("end date %s is before start date %s", endDate, startDate)
 			}
 		}
+
+		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Println("Starting transaction export...")
 
 		// Ensure we have a valid output path
 		if outputPath == "" {
-			fmt.Println("Error: No output path specified")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --outputPath")
 		}
 
 		// Clean and validate output path
@@ -207,22 +208,19 @@ MAPPING FILES:
 			var absErr error
 			outputPath, absErr = filepath.Abs(outputPath)
 			if absErr != nil {
-				fmt.Printf("Error with output path: %v\n", absErr)
-				os.Exit(1)
+				return fmt.Errorf("resolving output path %q: %w", outputPath, absErr)
 			}
 		}
 
 		// Try to create the output directory
 		fmt.Printf("Creating output directory: %s\n", outputPath)
 		if mkdirErr := os.MkdirAll(outputPath, 0755); mkdirErr != nil {
-			fmt.Printf("Error creating output directory: %v\n", mkdirErr)
-			os.Exit(1)
+			return fmt.Errorf("creating output directory %q: %w", outputPath, mkdirErr)
 		}
 
 		// Validate input file exists and is readable
 		if _, err := os.Stat(inputFile); os.IsNotExist(err) {
-			fmt.Printf("Error: Input file not found: %s\n", inputFile)
-			os.Exit(1)
+			return fmt.Errorf("input file not found: %s", inputFile)
 		}
 
 		// Process the selected accounts into a list
@@ -255,8 +253,7 @@ MAPPING FILES:
 		if categoryMappingFile != "" {
 			categoryMapping, err = loadMapping(categoryMappingFile)
 			if err != nil {
-				fmt.Println("Error loading category mapping:", err)
-				return
+				return fmt.Errorf("loading category mapping %q: %w", categoryMappingFile, err)
 			}
 			fmt.Printf("%d Category Mappings Loaded:\n", len(categoryMapping))
 			for k, v := range categoryMapping {
@@ -270,8 +267,7 @@ MAPPING FILES:
 		if payeeMappingFile != "" {
 			payeeMapping, err = loadMapping(payeeMappingFile)
 			if err != nil {
-				fmt.Println("Error loading payee mapping:", err)
-				return
+				return fmt.Errorf("loading payee mapping %q: %w", payeeMappingFile, err)
 			}
 			fmt.Printf("%d Payee Mappings Loaded:\n", len(payeeMapping))
 			for k, v := range payeeMapping {
@@ -285,8 +281,7 @@ MAPPING FILES:
 		if accountMappingFile != "" {
 			accountMapping, err = loadMapping(accountMappingFile)
 			if err != nil {
-				fmt.Println("Error loading account mapping:", err)
-				return
+				return fmt.Errorf("loading account mapping %q: %w", accountMappingFile, err)
 			}
 			fmt.Printf("%d Account Mappings Loaded:\n", len(accountMapping))
 			for k, v := range accountMapping {
@@ -302,8 +297,7 @@ MAPPING FILES:
 		if tagMappingFile != "" {
 			tagMapping, err = loadMapping(tagMappingFile)
 			if err != nil {
-				fmt.Println("Error loading tag mapping:", err)
-				return
+				return fmt.Errorf("loading tag mapping %q: %w", tagMappingFile, err)
 			}
 			fmt.Printf("%d Tag Mappings Loaded:\n", len(tagMapping))
 			for k, v := range tagMapping {
@@ -330,7 +324,7 @@ MAPPING FILES:
 		// Compile the regex
 		regex, err := regexp.Compile(accountBlockHeaderRegex)
 		if err != nil {
-			return
+			return fmt.Errorf("compiling account block pattern: %w", err)
 		}
 		accountBlocks := regex.FindAllStringSubmatchIndex(inputContent, -1)
 		if len(accountBlocks) == 0 {
@@ -737,6 +731,8 @@ MAPPING FILES:
 		if err := validator.WriteValidationLogWithName(outputPath, "transactions_validation.log"); err != nil {
 			fmt.Printf("Warning: Could not write validation log: %v\n", err)
 		}
+
+		return nil
 	},
 }
 

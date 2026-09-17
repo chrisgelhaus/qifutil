@@ -69,8 +69,11 @@ func (h *TestHelper) CopyTestData(filename string, targetPath string) {
 	}
 }
 
-// CaptureOutput captures stdout during the execution of the given function
-func (h *TestHelper) CaptureOutput(fn func()) string {
+// CaptureOutput captures stdout during the execution of the given function.
+// The restore runs deferred so that a t.Fatalf inside fn, which unwinds through
+// runtime.Goexit, cannot leave stdout pointing at the pipe for the rest of the
+// test binary.
+func (h *TestHelper) CaptureOutput(fn func()) (output string) {
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
@@ -82,13 +85,15 @@ func (h *TestHelper) CaptureOutput(fn func()) string {
 		done <- true
 	}()
 
+	defer func() {
+		w.Close()
+		os.Stdout = old
+		<-done
+		output = buf.String()
+	}()
+
 	fn()
-
-	w.Close()
-	os.Stdout = old
-	<-done
-
-	return buf.String()
+	return
 }
 
 // AssertFileExists checks if a file exists at the given path
