@@ -593,23 +593,10 @@ MAPPING FILES:
 						Tags:              tag,
 					}
 
-					// JSON and XML are marshalled as a whole document, so their
-					// records are collected and written when the file is closed.
-					format := strings.ToUpper(outputFormat)
-					if format == "JSON" || format == "XML" {
-						records = append(records, record)
-					} else {
-						line := buildCSVRow(record, columnsToUse)
-						if err := writeTransaction(outputFile, line); err != nil {
-							outputFile.Close()
-							fmt.Printf("failed to write transaction: %v\n", err)
-							skippedAccounts++
-							continue accountLoop
-						}
-					}
-					count++
-					// Check if we need to split the file
-					if maxRecordsPerFile != 0 && count%maxRecordsPerFile == 0 {
+					// Roll to the next file before writing, not after. Opening it at
+					// the boundary created a file for records that never arrived,
+					// leaving one holding nothing but a header.
+					if maxRecordsPerFile != 0 && count > 0 && count%maxRecordsPerFile == 0 {
 						// Close current file
 						if strings.ToUpper(outputFormat) == "JSON" {
 							jsonData, err := json.MarshalIndent(records, "", "  ")
@@ -682,6 +669,22 @@ MAPPING FILES:
 							}
 						}
 					}
+
+					// JSON and XML are marshalled as a whole document, so their
+					// records are collected and written when the file is closed.
+					format := strings.ToUpper(outputFormat)
+					if format == "JSON" || format == "XML" {
+						records = append(records, record)
+					} else {
+						line := buildCSVRow(record, columnsToUse)
+						if err := writeTransaction(outputFile, line); err != nil {
+							outputFile.Close()
+							fmt.Printf("failed to write transaction: %v\n", err)
+							skippedAccounts++
+							continue accountLoop
+						}
+					}
+					count++
 
 				}
 			}
