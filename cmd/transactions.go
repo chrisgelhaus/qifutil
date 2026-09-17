@@ -439,6 +439,13 @@ MAPPING FILES:
 			var transactions []utils.TransactionFields
 			undatedRecords := 0
 			for _, record := range utils.SplitRecords(textBetweenTypes) {
+				// The next account's header block falls inside this account's text.
+				// It is QIF structure rather than a transaction, so it is neither
+				// exported nor reported as one that failed to export.
+				if strings.HasPrefix(strings.TrimSpace(record), "!") {
+					continue
+				}
+
 				fields := utils.ParseTransactionRecord(record)
 				if fields.Date == "" {
 					undatedRecords++

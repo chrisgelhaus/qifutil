@@ -872,3 +872,30 @@ func TestOneUnwritableAccountDoesNotAbortTheExport(t *testing.T) {
 		t.Errorf("the skipped account should be named in the output, got:\n%s", output)
 	}
 }
+
+// TestAccountHeadersAreNotCountedAsUndatedRecords covers the account header of
+// the following account, which falls inside the current account's text. It is
+// QIF structure, not a transaction that failed to export.
+func TestAccountHeadersAreNotCountedAsUndatedRecords(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	setupTransactionExport(t)
+
+	sourceFile := filepath.Join(tempDir, "sample.qif")
+	helper.CopyTestData("sample.qif", sourceFile)
+
+	outputDir := filepath.Join(tempDir, "output")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		t.Fatalf("failed to create output dir: %v", err)
+	}
+	inputFile = sourceFile
+	outputPath = outputDir
+
+	output := helper.CaptureOutput(func() {
+		transactionsCmd.Run(transactionsCmd, []string{})
+	})
+
+	if strings.Contains(output, "had no date") {
+		t.Errorf("account headers were reported as undated records:\n%s", output)
+	}
+}
