@@ -61,29 +61,29 @@ TIPS:
   - If exceeded maxRecordsPerFile, creates _2.csv, _3.csv, etc.
   - Use list-accounts to find exact account names`,
 
-	PreRun: func(cmd *cobra.Command, args []string) {
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		// Validate input file exists
 		if inputFile == "" {
-			fmt.Println("Error: Missing required flag --inputFile")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --inputFile")
 		}
 
 		// Validate single account is specified
 		if selectedAccounts == "" {
-			fmt.Println("Error: balance-history requires exactly one account (--accounts)")
-			os.Exit(1)
+			return fmt.Errorf("balance-history requires exactly one account: pass --accounts")
 		}
 
 		accountList := strings.Split(selectedAccounts, ",")
 		if len(accountList) != 1 {
-			fmt.Println("Error: balance-history requires exactly one account. Multiple accounts specified.")
-			os.Exit(1)
+			return fmt.Errorf("balance-history requires exactly one account, got %d", len(accountList))
 		}
 
 		accountName := strings.TrimSpace(accountList[0])
 		if accountName == "" {
-			fmt.Println("Error: Account name cannot be empty")
-			os.Exit(1)
+			return fmt.Errorf("account name cannot be empty")
 		}
 
 		// Validate mutually exclusive balance options
@@ -91,13 +91,11 @@ TIPS:
 		hasOpeningBalance := openingBalance != ""
 
 		if !hasCurrentBalance && !hasOpeningBalance {
-			fmt.Println("Error: Either --currentBalance or --openingBalance must be specified")
-			os.Exit(1)
+			return fmt.Errorf("pass either --currentBalance or --openingBalance")
 		}
 
 		if hasCurrentBalance && hasOpeningBalance {
-			fmt.Println("Error: --currentBalance and --openingBalance are mutually exclusive. Use only one.")
-			os.Exit(1)
+			return fmt.Errorf("--currentBalance and --openingBalance are mutually exclusive")
 		}
 
 		// Validate balance is a valid number
@@ -107,22 +105,19 @@ TIPS:
 		}
 
 		if _, err := strconv.ParseFloat(balanceStr, 64); err != nil {
-			fmt.Printf("Error: Invalid balance value '%s': must be a valid number\n", balanceStr)
-			os.Exit(1)
+			return fmt.Errorf("invalid balance %q: must be a number", balanceStr)
 		}
 
 		// Validate date format if provided
 		dateFormat := "2006-01-02"
 		if startDate != "" {
 			if _, err := time.Parse(dateFormat, startDate); err != nil {
-				fmt.Println("Error: Invalid start date format. Use YYYY-MM-DD")
-				os.Exit(1)
+				return fmt.Errorf("invalid start date %q: use YYYY-MM-DD", startDate)
 			}
 		}
 		if endDate != "" {
 			if _, err := time.Parse(dateFormat, endDate); err != nil {
-				fmt.Println("Error: Invalid end date format. Use YYYY-MM-DD")
-				os.Exit(1)
+				return fmt.Errorf("invalid end date %q: use YYYY-MM-DD", endDate)
 			}
 		}
 		// Validate date range if both dates are provided
@@ -130,13 +125,14 @@ TIPS:
 			start, _ := time.Parse(dateFormat, startDate)
 			end, _ := time.Parse(dateFormat, endDate)
 			if end.Before(start) {
-				fmt.Println("Error: End date cannot be before start date")
-				os.Exit(1)
+				return fmt.Errorf("end date %s is before start date %s", endDate, startDate)
 			}
 		}
+
+		return nil
 	},
 
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Println("Starting balance history generation...")
 
 		// Initialize validation tracker
@@ -144,8 +140,7 @@ TIPS:
 
 		// Ensure we have a valid output path
 		if outputPath == "" {
-			fmt.Println("Error: No output path specified")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --outputPath")
 		}
 
 		// Clean and validate output path
@@ -154,22 +149,19 @@ TIPS:
 			var absErr error
 			outputPath, absErr = filepath.Abs(outputPath)
 			if absErr != nil {
-				fmt.Printf("Error with output path: %v\n", absErr)
-				os.Exit(1)
+				return fmt.Errorf("resolving output path %q: %w", outputPath, absErr)
 			}
 		}
 
 		// Create the output directory
 		fmt.Printf("Creating output directory: %s\n", outputPath)
 		if mkdirErr := os.MkdirAll(outputPath, 0755); mkdirErr != nil {
-			fmt.Printf("Error creating output directory: %v\n", mkdirErr)
-			os.Exit(1)
+			return fmt.Errorf("creating output directory %q: %w", outputPath, mkdirErr)
 		}
 
 		// Validate input file exists
 		if _, err := os.Stat(inputFile); os.IsNotExist(err) {
-			fmt.Printf("Error: Input file not found: %s\n", inputFile)
-			os.Exit(1)
+			return fmt.Errorf("input file not found: %s", inputFile)
 		}
 
 		// Get the account name (already validated to be single account)
@@ -178,8 +170,7 @@ TIPS:
 		// Load and parse QIF file
 		inputBytes, err := os.ReadFile(inputFile)
 		if err != nil {
-			fmt.Println("Error reading file:", err)
-			os.Exit(1)
+			return fmt.Errorf("reading %q: %w", inputFile, err)
 		}
 
 		fmt.Printf("Input file opened. Length: %d\n", len(inputBytes))
@@ -192,8 +183,7 @@ TIPS:
 		accountBlockHeaderRegex := `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 		regex, err := regexp.Compile(accountBlockHeaderRegex)
 		if err != nil {
-			fmt.Println("Error compiling regex:", err)
-			os.Exit(1)
+			return fmt.Errorf("compiling account block pattern: %w", err)
 		}
 
 		accountBlocks := regex.FindAllStringSubmatchIndex(inputContent, -1)
@@ -223,8 +213,7 @@ TIPS:
 		}
 
 		if !foundAccount {
-			fmt.Printf("Error: Account '%s' not found in file\n", accountName)
-			os.Exit(1)
+			return fmt.Errorf("account %q not found in %s", accountName, inputFile)
 		}
 
 		// Extract transactions for this account. QIF records are read field by
@@ -305,7 +294,7 @@ TIPS:
 
 		if len(dailyBalances) == 0 {
 			fmt.Println("Warning: No transactions found for balance history")
-			return
+			return nil
 		}
 
 		// Sort dates
@@ -366,15 +355,13 @@ TIPS:
 
 		outputFile, err := os.Create(fullPath)
 		if err != nil {
-			fmt.Printf("Error creating file %s: %v\n", outputFileName, err)
-			os.Exit(1)
+			return fmt.Errorf("creating %s: %w", outputFileName, err)
 		}
 
 		// Write header
 		if _, err := outputFile.WriteString("Date,Balance\n"); err != nil {
 			outputFile.Close()
-			fmt.Printf("Error writing header to %s: %v\n", outputFileName, err)
-			os.Exit(1)
+			return fmt.Errorf("writing header to %s: %w", outputFileName, err)
 		}
 
 		// Write balance records
@@ -382,8 +369,7 @@ TIPS:
 			line := fmt.Sprintf("%s,%s\n", record.Date, record.Balance)
 			if _, err := outputFile.WriteString(line); err != nil {
 				outputFile.Close()
-				fmt.Printf("Error writing record to %s: %v\n", outputFileName, err)
-				os.Exit(1)
+				return fmt.Errorf("writing record to %s: %w", outputFileName, err)
 			}
 
 			count++
@@ -400,15 +386,13 @@ TIPS:
 				fullPath := filepath.Join(outputPath, outputFileName)
 				outputFile, err = os.Create(fullPath)
 				if err != nil {
-					fmt.Printf("Error creating file %s: %v\n", outputFileName, err)
-					os.Exit(1)
+					return fmt.Errorf("creating %s: %w", outputFileName, err)
 				}
 
 				// Write header for new file
 				if _, err := outputFile.WriteString("Date,Balance\n"); err != nil {
 					outputFile.Close()
-					fmt.Printf("Error writing header to %s: %v\n", outputFileName, err)
-					os.Exit(1)
+					return fmt.Errorf("writing header to %s: %w", outputFileName, err)
 				}
 			}
 		}
@@ -449,6 +433,8 @@ TIPS:
 		if err := validator.WriteValidationLogWithName(outputPath, "balance_history_validation.log"); err != nil {
 			fmt.Printf("Warning: Could not write validation log: %v\n", err)
 		}
+
+		return nil
 	},
 }
 

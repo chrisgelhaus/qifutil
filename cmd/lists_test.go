@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -209,7 +208,9 @@ LFood:Dining
 	startDate, endDate = "", ""
 
 	helper.CaptureOutput(func() {
-		balanceHistoryCmd.Run(balanceHistoryCmd, []string{})
+		if err := balanceHistoryCmd.RunE(balanceHistoryCmd, []string{}); err != nil {
+			t.Fatalf("balance-history failed: %v", err)
+		}
 	})
 
 	result := filepath.Join(tempDir, "Checking_balance_history_1.csv")
@@ -231,29 +232,101 @@ LFood:Dining
 // TestBalanceHistorySanitizesTheAccountNameForItsFileName covers the same trap
 // the transaction export had: a colon makes NTFS treat the rest of the name as
 // an alternate data stream, so the run reports success and writes nothing
-// visible. It runs the built binary because the failure path calls os.Exit,
-// which would take the test process down with it.
+// visible.
 func TestBalanceHistorySanitizesTheAccountNameForItsFileName(t *testing.T) {
 	helper := test.NewHelper(t)
 	tempDir := helper.CreateTempDir()
 
+	prevInput, prevOutput := inputFile, outputPath
+	prevAccounts, prevOpening, prevCurrent := selectedAccounts, openingBalance, currentBalance
+	prevStart, prevEnd := startDate, endDate
+	t.Cleanup(func() {
+		inputFile, outputPath = prevInput, prevOutput
+		selectedAccounts, openingBalance, currentBalance = prevAccounts, prevOpening, prevCurrent
+		startDate, endDate = prevStart, prevEnd
+	})
+
 	qif := "!Account\nNAmex / Joint\nTCCard\n^\n!Type:CCard\n" +
 		"D1/5'23\nT-10.00\nPSlash Name\nLFood:Dining\n^\n"
-	if err := os.WriteFile(filepath.Join(tempDir, "slash.qif"), []byte(qif), 0644); err != nil {
+	sourceFile := filepath.Join(tempDir, "slash.qif")
+	if err := os.WriteFile(sourceFile, []byte(qif), 0644); err != nil {
 		t.Fatalf("failed to write qif fixture: %v", err)
 	}
 
-	cmd := exec.Command(qifutilBin, "export", "balance-history",
-		"-i", "slash.qif", "-o", ".",
-		"--accounts", "Amex / Joint", "--openingBalance", "0")
-	cmd.Dir = tempDir
+	inputFile = sourceFile
+	outputPath = tempDir
+	selectedAccounts = "Amex / Joint"
+	openingBalance = "0"
+	currentBalance = ""
+	startDate, endDate = "", ""
 
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("balance-history failed for an account with a slash: %v\n%s", err, out)
-	}
+	helper.CaptureOutput(func() {
+		if err := balanceHistoryCmd.RunE(balanceHistoryCmd, []string{}); err != nil {
+			t.Fatalf("balance-history failed for an account with a slash: %v", err)
+		}
+	})
 
 	result := filepath.Join(tempDir, "Amex _ Joint_balance_history_1.csv")
 	helper.AssertFileExists(result)
 	helper.AssertFileContains(result, "-10.00")
+}
+
+// TestBalanceHistoryReportsFailuresInsteadOfExiting covers failure paths that
+// previously ended the process, and so could not be asserted on at all.
+func TestBalanceHistoryReportsFailuresInsteadOfExiting(t *testing.T) {
+	tests := []struct {
+		name     string
+		accounts string
+		opening  string
+		current  string
+		wantErr  string
+	}{
+		{"no account", "", "0", "", "requires exactly one account"},
+		{"several accounts", "A,B", "0", "", "requires exactly one account"},
+		{"no balance given", "Checking", "", "", "either --currentBalance or --openingBalance"},
+		{"both balances given", "Checking", "0", "0", "mutually exclusive"},
+		{"balance is not a number", "Checking", "abc", "", "invalid balance"},
+		{"account is absent from the file", "Nowhere", "0", "", "not found in"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			helper := test.NewHelper(t)
+			tempDir := helper.CreateTempDir()
+
+			prevInput, prevOutput := inputFile, outputPath
+			prevAccounts, prevOpening, prevCurrent := selectedAccounts, openingBalance, currentBalance
+			prevStart, prevEnd := startDate, endDate
+			t.Cleanup(func() {
+				inputFile, outputPath = prevInput, prevOutput
+				selectedAccounts, openingBalance, currentBalance = prevAccounts, prevOpening, prevCurrent
+				startDate, endDate = prevStart, prevEnd
+			})
+
+			sourceFile := filepath.Join(tempDir, "sample.qif")
+			helper.CopyTestData("sample.qif", sourceFile)
+			inputFile = sourceFile
+			outputPath = tempDir
+			selectedAccounts = tt.accounts
+			openingBalance = tt.opening
+			currentBalance = tt.current
+			startDate, endDate = "", ""
+
+			// Cobra runs PreRunE before RunE, and the argument checks live there.
+			var err error
+			helper.CaptureOutput(func() {
+				if err = balanceHistoryCmd.PreRunE(balanceHistoryCmd, []string{}); err != nil {
+					return
+				}
+				err = balanceHistoryCmd.RunE(balanceHistoryCmd, []string{})
+			})
+
+			if err == nil {
+				t.Fatalf("expected an error mentioning %q, got nil", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to mention %q", err, tt.wantErr)
+			}
+		})
+	}
 }
