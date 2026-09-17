@@ -49,17 +49,18 @@ TIPS:
   - Account names are case-sensitive
   - Use quotes around account names with spaces`,
 
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		if inputFile == "" {
-			fmt.Println("Error: Missing required flag --inputFile")
-			fmt.Println("Usage: qifutil account-stats -i <qif-file> [-a <account-names>]")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --inputFile")
 		}
 
 		// Validate input file exists
 		if _, err := os.Stat(inputFile); os.IsNotExist(err) {
-			fmt.Printf("Error: Input file not found: %s\n", inputFile)
-			os.Exit(1)
+			return fmt.Errorf("input file not found: %s", inputFile)
 		}
 
 		fmt.Printf("Analyzing accounts in %s...\n\n", inputFile)
@@ -67,8 +68,7 @@ TIPS:
 		// Load input file
 		inputBytes, err := os.ReadFile(inputFile)
 		if err != nil {
-			fmt.Printf("Error reading file: %v\n", err)
-			return
+			return fmt.Errorf("reading %q: %w", inputFile, err)
 		}
 
 		inputContent := string(inputBytes)
@@ -88,15 +88,14 @@ TIPS:
 		accountBlockHeaderRegex := `!Account\nN(.*?)\nT(.*?)\n\^\n!Type:(.*?)\n`
 		regex, err := regexp.Compile(accountBlockHeaderRegex)
 		if err != nil {
-			fmt.Println("Error compiling regex:", err)
-			return
+			return fmt.Errorf("compiling account block pattern: %w", err)
 		}
 
 		// Find all account blocks with positions
 		accountBlocksIdx := regex.FindAllStringSubmatchIndex(inputContent, -1)
 		if len(accountBlocksIdx) == 0 {
 			fmt.Println("No accounts found in the file.")
-			return
+			return nil
 		}
 
 		fmt.Printf("Account Statistics from %s:\n\n", inputFile)
@@ -184,6 +183,8 @@ TIPS:
 				fmt.Printf("  No transactions found\n\n")
 			}
 		}
+
+		return nil
 	},
 }
 

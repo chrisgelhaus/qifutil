@@ -29,13 +29,22 @@ var categoriesCmd = &cobra.Command{
 	Use:   "categories",
 	Short: "Extract categories from a QIF file",
 	Long:  `Extract categories from a QIF file.`,
-	PreRun: func(cmd *cobra.Command, args []string) {
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		if inputFile == "" {
-			fmt.Println("Error: Missing required flag --inputFile")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --inputFile")
 		}
+
+		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		var categories []string
 		var catRecordRegex string = `(?m)(^N(.*)\n(^D(.*)\n)?(^T(.*)\n)?(^R(.*)\n)?(^E(.*)\n)?(^I(.*)\n)?^\^\n)`
 		var catBlockHeaderRegex string = `(?m)^!Type:Cat\n`
@@ -60,7 +69,9 @@ var categoriesCmd = &cobra.Command{
 		// Load input file
 		inputBytes, err := os.ReadFile(inputFile)
 		if err != nil {
-			fmt.Println("Error reading file:", err)
+			// Carrying on would scan empty content and write an empty list
+			// while reporting success.
+			return fmt.Errorf("reading %q: %w", inputFile, err)
 		} else {
 			fmt.Printf("Input file opened. Length: %d\n", len(inputBytes))
 		}
@@ -189,15 +200,13 @@ var categoriesCmd = &cobra.Command{
 		case "JSON":
 			jsonData, err := json.MarshalIndent(outputCategoryList, "", "  ")
 			if err != nil {
-				fmt.Printf("Error marshaling JSON: %v\n", err)
-				return
+				return fmt.Errorf("encoding JSON: %w", err)
 			}
 			categoryFile.Write(jsonData)
 		case "XML":
 			xmlData, err := xml.MarshalIndent(categoryList{Categories: outputCategoryList}, "", "  ")
 			if err != nil {
-				fmt.Printf("Error marshaling XML: %v\n", err)
-				return
+				return fmt.Errorf("encoding XML: %w", err)
 			}
 			categoryFile.Write([]byte(xml.Header))
 			categoryFile.Write(xmlData)
@@ -212,6 +221,8 @@ var categoriesCmd = &cobra.Command{
 
 		fmt.Println("Unique Extracted Categories: ", len(outputCategoryList))
 
+
+		return nil
 	},
 }
 

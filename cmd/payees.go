@@ -29,13 +29,22 @@ var payeesCmd = &cobra.Command{
 	Use:   "payees",
 	Short: "Extract payees from a QIF file",
 	Long:  `Extract payees from a QIF file.`,
-	PreRun: func(cmd *cobra.Command, args []string) {
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		if inputFile == "" {
-			fmt.Println("Error: Missing required flag --inputFile")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --inputFile")
 		}
+
+		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 
 		var payees []string
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
@@ -58,7 +67,9 @@ var payeesCmd = &cobra.Command{
 		// Load input file
 		inputBytes, err := os.ReadFile(inputFile)
 		if err != nil {
-			fmt.Println("Error reading file:", err)
+			// Carrying on would scan empty content and write an empty list
+			// while reporting success.
+			return fmt.Errorf("reading %q: %w", inputFile, err)
 		} else {
 			fmt.Printf("Input file opened. Length: %d\n", len(inputBytes))
 		}
@@ -125,15 +136,13 @@ var payeesCmd = &cobra.Command{
 		case "JSON":
 			jsonData, err := json.MarshalIndent(outputPayeeList, "", "  ")
 			if err != nil {
-				fmt.Printf("Error marshaling JSON: %v\n", err)
-				return
+				return fmt.Errorf("encoding JSON: %w", err)
 			}
 			payeeFile.Write(jsonData)
 		case "XML":
 			xmlData, err := xml.MarshalIndent(payeeList{Payees: outputPayeeList}, "", "  ")
 			if err != nil {
-				fmt.Printf("Error marshaling XML: %v\n", err)
-				return
+				return fmt.Errorf("encoding XML: %w", err)
 			}
 			payeeFile.Write([]byte(xml.Header))
 			payeeFile.Write(xmlData)
@@ -148,6 +157,8 @@ var payeesCmd = &cobra.Command{
 
 		fmt.Println("Unique Extracted Payees: ", len(outputPayeeList))
 
+
+		return nil
 	},
 }
 

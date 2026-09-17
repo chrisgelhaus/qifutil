@@ -78,11 +78,17 @@ func runListCommand(t *testing.T, cmdName string) string {
 	helper.CaptureOutput(func() {
 		switch cmdName {
 		case "categories":
-			categoriesCmd.Run(categoriesCmd, []string{})
+			if err := categoriesCmd.RunE(categoriesCmd, []string{}); err != nil {
+				t.Fatalf("categoriesCmd failed: %v", err)
+			}
 		case "payees":
-			payeesCmd.Run(payeesCmd, []string{})
+			if err := payeesCmd.RunE(payeesCmd, []string{}); err != nil {
+				t.Fatalf("payeesCmd failed: %v", err)
+			}
 		case "tags":
-			tagsCmd.Run(tagsCmd, []string{})
+			if err := tagsCmd.RunE(tagsCmd, []string{}); err != nil {
+				t.Fatalf("tagsCmd failed: %v", err)
+			}
 		}
 	})
 
@@ -146,7 +152,9 @@ func TestAccountStatsCountsRecordsTheOldPatternMissed(t *testing.T) {
 	selectedAccounts = ""
 
 	output := helper.CaptureOutput(func() {
-		accountStatsCmd.Run(accountStatsCmd, []string{})
+		if err := accountStatsCmd.RunE(accountStatsCmd, []string{}); err != nil {
+			t.Fatalf("account-stats failed: %v", err)
+		}
 	})
 
 	if !strings.Contains(output, "Transactions: 4") {
@@ -326,6 +334,44 @@ func TestBalanceHistoryReportsFailuresInsteadOfExiting(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("error = %q, want it to mention %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestListCommandsReportAnUnreadableInputFile covers a read failure, which was
+// printed and then ignored: the command carried on with empty content, wrote an
+// empty list and reported success.
+func TestListCommandsReportAnUnreadableInputFile(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func() error
+	}{
+		{"categories", func() error { return categoriesCmd.RunE(categoriesCmd, []string{}) }},
+		{"payees", func() error { return payeesCmd.RunE(payeesCmd, []string{}) }},
+		{"tags", func() error { return tagsCmd.RunE(tagsCmd, []string{}) }},
+		{"accounts", func() error { return accountsCmd.RunE(accountsCmd, []string{}) }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			helper := test.NewHelper(t)
+			tempDir := helper.CreateTempDir()
+
+			prevInput, prevOutput := inputFile, outputPath
+			t.Cleanup(func() { inputFile, outputPath = prevInput, prevOutput })
+
+			inputFile = filepath.Join(tempDir, "absent.qif")
+			outputPath = tempDir
+
+			var err error
+			helper.CaptureOutput(func() { err = tt.run() })
+
+			if err == nil {
+				t.Fatal("reading a file that does not exist should be reported as an error")
+			}
+			if !strings.Contains(err.Error(), "reading") {
+				t.Errorf("error = %q, want it to mention reading the file", err)
 			}
 		})
 	}

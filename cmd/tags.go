@@ -29,13 +29,22 @@ var tagsCmd = &cobra.Command{
 	Use:   "tags",
 	Short: "Extract tags from a QIF file",
 	Long:  `Extract tags from a QIF file.`,
-	PreRun: func(cmd *cobra.Command, args []string) {
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		if inputFile == "" {
-			fmt.Println("Error: Missing required flag --inputFile")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --inputFile")
 		}
+
+		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		var tags []string
 		var tagRecordRegex string = `(?m)(^N(.*)\n^(D(.*)\n^)?\^\n)`
 		var tagBlockHeaderRegex string = `(?m)^!Type:Tag\n`
@@ -59,7 +68,9 @@ var tagsCmd = &cobra.Command{
 		// Load input file
 		inputBytes, err := os.ReadFile(inputFile)
 		if err != nil {
-			fmt.Println("Error reading file:", err)
+			// Carrying on would scan empty content and write an empty list
+			// while reporting success.
+			return fmt.Errorf("reading %q: %w", inputFile, err)
 		} else {
 			fmt.Printf("Input file opened. Length: %d\n", len(inputBytes))
 		}
@@ -191,15 +202,13 @@ var tagsCmd = &cobra.Command{
 		case "JSON":
 			jsonData, err := json.MarshalIndent(outputTagList, "", "  ")
 			if err != nil {
-				fmt.Printf("Error marshaling JSON: %v\n", err)
-				return
+				return fmt.Errorf("encoding JSON: %w", err)
 			}
 			tagFile.Write(jsonData)
 		case "XML":
 			xmlData, err := xml.MarshalIndent(tagList{Tags: outputTagList}, "", "  ")
 			if err != nil {
-				fmt.Printf("Error marshaling XML: %v\n", err)
-				return
+				return fmt.Errorf("encoding XML: %w", err)
 			}
 			tagFile.Write([]byte(xml.Header))
 			tagFile.Write(xmlData)
@@ -213,6 +222,8 @@ var tagsCmd = &cobra.Command{
 		}
 
 		fmt.Println("Extracted Tags: ", len(outputTagList))
+
+		return nil
 	},
 }
 

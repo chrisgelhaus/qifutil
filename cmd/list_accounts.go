@@ -37,17 +37,18 @@ TIPS:
   - Account names are case-sensitive
   - Copy/paste account names to ensure exact matches`,
 
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// A failure past flag parsing is about the data, not how the command
+		// was called, so cobra should print it without the usage text.
+		cmd.SilenceUsage = true
+
 		if inputFile == "" {
-			fmt.Println("Error: Missing required flag --inputFile")
-			fmt.Println("Usage: qifutil list-accounts -i <qif-file>")
-			os.Exit(1)
+			return fmt.Errorf("missing required flag --inputFile")
 		}
 
 		// Validate input file exists
 		if _, err := os.Stat(inputFile); os.IsNotExist(err) {
-			fmt.Printf("Error: Input file not found: %s\n", inputFile)
-			os.Exit(1)
+			return fmt.Errorf("input file not found: %s", inputFile)
 		}
 
 		fmt.Printf("Reading accounts from %s...\n\n", inputFile)
@@ -55,8 +56,7 @@ TIPS:
 		// Load input file
 		inputBytes, err := os.ReadFile(inputFile)
 		if err != nil {
-			fmt.Printf("Error reading file: %v\n", err)
-			return
+			return fmt.Errorf("reading %q: %w", inputFile, err)
 		}
 
 		inputContent := string(inputBytes)
@@ -67,15 +67,14 @@ TIPS:
 		accountBlockHeaderRegex := `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 		regex, err := regexp.Compile(accountBlockHeaderRegex)
 		if err != nil {
-			fmt.Println("Error compiling regex:", err)
-			return
+			return fmt.Errorf("compiling account block pattern: %w", err)
 		}
 
 		// Find all account blocks
 		accountBlocks := regex.FindAllStringSubmatch(inputContent, -1)
 		if len(accountBlocks) == 0 {
 			fmt.Println("No accounts found in the file.")
-			return
+			return nil
 		}
 
 		fmt.Printf("Found %d accounts in %s:\n\n", len(accountBlocks), inputFile)
@@ -91,6 +90,8 @@ TIPS:
 				fmt.Printf("%d. %s\n", i+1, accountName)
 			}
 		}
+
+		return nil
 	},
 }
 
