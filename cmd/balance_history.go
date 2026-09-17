@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"qifutil/pkg/utils"
+
+	"github.com/spf13/cobra"
 )
 
 var generateBalanceHistory bool
@@ -226,15 +227,22 @@ TIPS:
 			os.Exit(1)
 		}
 
-		// Extract transactions for this account
-		transactionRegexString := `D(?<month>\d{1,2})\/(\s?(?<day>\d{1,2}))'(?<year>\d{2})[\r\n]+(U(?<amount1>.*?)[\r\n]+)(T(?<amount2>.*?)[\r\n]+)(C(?<cleared>.*?)[\r\n]+)((N(?<number>.*?)[\r\n]+)?)(P(?<payee>.*?)[\r\n]+)((M(?<memo>.*?)[\r\n]+)?)(L(?<category>.*?)[\r\n]+)`
-		transactionRegex, err := regexp.Compile(transactionRegexString)
-		if err != nil {
-			fmt.Println("Error compiling transaction regex:", err)
-			os.Exit(1)
+		// Extract transactions for this account. QIF records are read field by
+		// field: a single pattern cannot express fields that are optional and
+		// may appear in any order, and a record it failed to match was left out
+		// of the arithmetic, making the reported balance wrong.
+		var transactions []utils.TransactionFields
+		for _, record := range utils.SplitRecords(selectedBlockContent) {
+			// The next account's header block falls inside this account's text.
+			if strings.HasPrefix(strings.TrimSpace(record), "!") {
+				continue
+			}
+			fields := utils.ParseTransactionRecord(record)
+			if fields.Date == "" {
+				continue
+			}
+			transactions = append(transactions, fields)
 		}
-
-		transactions := transactionRegex.FindAllStringSubmatch(selectedBlockContent, -1)
 		fmt.Printf("Number of transactions found: %d\n", len(transactions))
 
 		// Build daily balance map
@@ -242,12 +250,9 @@ TIPS:
 		var dateKeys []string
 		dateKeySet := make(map[string]bool)
 
-		for _, t := range transactions {
-			if len(t) > 1 {
-				month := strings.TrimSpace(t[1])
-				day := strings.TrimSpace(t[2])
-				year := strings.TrimSpace(t[4])
-				amount := strings.TrimSpace(t[6])
+		for _, fields := range transactions {
+			{
+				amount := fields.Amount
 
 				// Remove commas from amount (for US-formatted numbers like 1,234.56)
 				amount = strings.ReplaceAll(amount, ",", "")
@@ -265,16 +270,15 @@ TIPS:
 					validator.AddZeroAmount()
 				}
 
-				// Format date
-				fullYear := "20" + year
-				month = "0" + month
-				fullMonth := month[len(month)-2:]
-				day = "0" + day
-				fullDay := day[len(day)-2:]
-				fullDate := fullYear + "-" + fullMonth + "-" + fullDay
+				// The separator before the year carries the century.
+				transDate, dateErr := utils.ParseQIFDateField(fields.Date)
+				if dateErr != nil {
+					fmt.Printf("Warning: Skipping transaction with unusable date: %v\n", dateErr)
+					continue
+				}
+				fullDate := transDate.Format("2006-01-02")
 
 				// Check date filtering
-				transDate, _ := time.Parse("2006-01-02", fullDate)
 				if startDate != "" {
 					startDateTime, _ := time.Parse("2006-01-02", startDate)
 					if transDate.Before(startDateTime) {

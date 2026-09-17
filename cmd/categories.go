@@ -37,7 +37,6 @@ var categoriesCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		var categories []string
-		var transactionRegexString string = `D(?<month>\d{1,2})\/(\s?(?<day>\d{1,2}))'(?<year>\d{2})[\r\n]+(U(?<amount1>.*?)[\r\n]+)(T(?<amount2>.*?)[\r\n]+)(C(?<cleared>.*?)[\r\n]+)((N(?<number>.*?)[\r\n]+)?)(P(?<payee>.*?)[\r\n]+)((M(?<memo>.*?)[\r\n]+)?)(L(?<category>.*?)[\r\n]+)`
 		var catRecordRegex string = `(?m)(^N(.*)\n(^D(.*)\n)?(^T(.*)\n)?(^R(.*)\n)?(^E(.*)\n)?(^I(.*)\n)?^\^\n)`
 		var catBlockHeaderRegex string = `(?m)^!Type:Cat\n`
 		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
@@ -149,26 +148,36 @@ var categoriesCmd = &cobra.Command{
 			textBetweenTypes := inputContent[accountBlock[1]:endPos]
 
 			// Use the existing pattern to match entries
-			regex, _ := regexp.Compile(transactionRegexString)
+			// QIF records are read field by field. A single pattern cannot express
+			// fields that are optional and may appear in any order, and the one
+			// used here silently skipped any record that did not fit.
+			var records []utils.TransactionFields
+			for _, record := range utils.SplitRecords(textBetweenTypes) {
+				// The next account's header block falls inside this account's text.
+				if strings.HasPrefix(strings.TrimSpace(record), "!") {
+					continue
+				}
+				fields := utils.ParseTransactionRecord(record)
+				if fields.Date == "" {
+					continue
+				}
+				records = append(records, fields)
+			}
 
-			// Find all matches in the content.
-			transactions := regex.FindAllStringSubmatch(textBetweenTypes, -1)
-			fmt.Printf("%d categories extracted from account: %s\n\n", len(transactions), accountName)
+			fmt.Printf("%d categories extracted from account: %s\n\n", len(records), accountName)
 
-			// Loop through matches and add categories to the array
-			for _, t := range transactions {
-				// Check if there is a captured group and extract the content.
-				if len(t) > 1 {
-					var category string = ""
-					rawcategory := strings.TrimSpace(t[20])
-					category, _ = utils.SplitCategoryAndTag(rawcategory)
+			// A split line carries a category of its own, which may appear nowhere
+			// else in the file.
+			for _, fields := range records {
+				raw := []string{fields.Category}
+				for _, split := range fields.Splits {
+					raw = append(raw, split.Category)
+				}
 
-					// If the category is not empty, add it to the list
+				for _, value := range raw {
+					category, _ := utils.SplitCategoryAndTag(value)
 					if category != "" {
-						// Remove double quotes
-						category = strings.ReplaceAll(category, "\"", "")
-						// Add category to the list
-						categories = append(categories, category)
+						categories = append(categories, strings.ReplaceAll(category, "\"", ""))
 					}
 				}
 			}

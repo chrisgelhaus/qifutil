@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
+	"qifutil/pkg/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -92,9 +92,6 @@ TIPS:
 			return
 		}
 
-		// Transaction regex - only match dates
-		transactionRegex := regexp.MustCompile(`D(\d{1,2})/(\d{1,2})'(\d{2})`)
-
 		// Find all account blocks with positions
 		accountBlocksIdx := regex.FindAllStringSubmatchIndex(inputContent, -1)
 		if len(accountBlocksIdx) == 0 {
@@ -133,39 +130,53 @@ TIPS:
 			}
 			accountContent := inputContent[blockIdx[1]:endPos]
 
-			// Find all transactions
-			transactions := transactionRegex.FindAllStringSubmatch(accountContent, -1)
+			// QIF records are read field by field: a single pattern cannot
+			// express fields that are optional and may appear in any order, and
+			// the separator before the year carries the century.
+			transactionCount := 0
+			var dates []time.Time
+			for _, record := range utils.SplitRecords(accountContent) {
+				// The next account's header block falls inside this account's text.
+				if strings.HasPrefix(strings.TrimSpace(record), "!") {
+					continue
+				}
+				fields := utils.ParseTransactionRecord(record)
+				if fields.Date == "" {
+					continue
+				}
 
-			// Process transactions
+				transactionCount++
+				if date, err := utils.ParseQIFDateField(fields.Date); err == nil {
+					dates = append(dates, date)
+				}
+			}
+
 			stats := AccountStats{
 				Name:             accountName,
 				Type:             accountType,
-				TransactionCount: len(transactions),
-				EarliestDate:     time.Date(2099, 12, 31, 0, 0, 0, 0, time.UTC),
-				LatestDate:       time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC),
-			} // Process dates if we have transactions
+				TransactionCount: transactionCount,
+			}
+
 			if stats.TransactionCount > 0 {
-				for _, t := range transactions {
-					// Process date
-					month, _ := strconv.Atoi(t[1])
-					day, _ := strconv.Atoi(t[2])
-					year, _ := strconv.Atoi("20" + t[3])
-					date := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
-
-					if date.Before(stats.EarliestDate) {
-						stats.EarliestDate = date
-					}
-					if date.After(stats.LatestDate) {
-						stats.LatestDate = date
-					}
-				}
-
-				// Print statistics
 				fmt.Printf("Account: %s (Type: %s)\n", stats.Name, stats.Type)
 				fmt.Printf("  Transactions: %d\n", stats.TransactionCount)
-				fmt.Printf("  Date Range: %s to %s\n",
-					stats.EarliestDate.Format("2006-01-02"),
-					stats.LatestDate.Format("2006-01-02"))
+
+				// A date that cannot be read leaves the range narrower rather
+				// than dragging it to a sentinel year.
+				if len(dates) > 0 {
+					stats.EarliestDate, stats.LatestDate = dates[0], dates[0]
+					for _, date := range dates[1:] {
+						if date.Before(stats.EarliestDate) {
+							stats.EarliestDate = date
+						}
+						if date.After(stats.LatestDate) {
+							stats.LatestDate = date
+						}
+					}
+					fmt.Printf("  Date Range: %s to %s\n",
+						stats.EarliestDate.Format("2006-01-02"),
+						stats.LatestDate.Format("2006-01-02"))
+				}
 				fmt.Println()
 			} else {
 				// Print statistics for accounts with no transactions
