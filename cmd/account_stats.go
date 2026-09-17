@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
+Copyright © 2025 Chris Gelhaus
 */
 package cmd
 
@@ -95,9 +95,9 @@ TIPS:
 		// Transaction regex - only match dates
 		transactionRegex := regexp.MustCompile(`D(\d{1,2})/(\d{1,2})'(\d{2})`)
 
-		// Find all account blocks
-		accountBlocks := regex.FindAllStringSubmatch(inputContent, -1)
-		if len(accountBlocks) == 0 {
+		// Find all account blocks with positions
+		accountBlocksIdx := regex.FindAllStringSubmatchIndex(inputContent, -1)
+		if len(accountBlocksIdx) == 0 {
 			fmt.Println("No accounts found in the file.")
 			return
 		}
@@ -105,9 +105,10 @@ TIPS:
 		fmt.Printf("Account Statistics from %s:\n\n", inputFile)
 
 		// Process each account
-		for _, block := range accountBlocks {
-			accountName := strings.TrimSpace(block[1]) // Name group
-			accountType := strings.TrimSpace(block[3]) // AccountType group
+		for i, blockIdx := range accountBlocksIdx {
+			// Groups: [0,1]=full [2,3]=name [4,5]=type-letter [6,7]=account-type
+			accountName := strings.TrimSpace(inputContent[blockIdx[2]:blockIdx[3]])
+			accountType := strings.TrimSpace(inputContent[blockIdx[6]:blockIdx[7]])
 
 			// Skip if not in selected accounts
 			if len(selectedAccountList) > 0 {
@@ -124,18 +125,13 @@ TIPS:
 			}
 
 			// Find transactions in the section following this account
-			loc := regex.FindStringIndex(inputContent)
-			if loc == nil {
-				continue
-			}
-
-			nextAccountLoc := regex.FindStringIndex(inputContent[loc[1]:])
-			var accountContent string
-			if nextAccountLoc != nil {
-				accountContent = inputContent[loc[1] : loc[1]+nextAccountLoc[0]]
+			var endPos int
+			if i+1 < len(accountBlocksIdx) {
+				endPos = accountBlocksIdx[i+1][0]
 			} else {
-				accountContent = inputContent[loc[1]:]
+				endPos = len(inputContent)
 			}
+			accountContent := inputContent[blockIdx[1]:endPos]
 
 			// Find all transactions
 			transactions := transactionRegex.FindAllStringSubmatch(accountContent, -1)

@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
+Copyright © 2025 Chris Gelhaus
 */
 package cmd
 
@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"qifutil/pkg/utils"
 
 	"github.com/spf13/cobra"
 )
@@ -76,12 +78,15 @@ var tagsCmd = &cobra.Command{
 		if loc == nil {
 			fmt.Printf("No Tag block found.\n")
 		} else {
-			// Debugging output
 			fmt.Printf("Tag block found at position: %d\n", loc[1])
 		}
 
 		// Find the position of the next Type block
-		restOfText := inputContent[loc[1]:]
+		var tagBlockEnd int
+		if loc != nil {
+			tagBlockEnd = loc[1]
+		}
+		restOfText := inputContent[tagBlockEnd:]
 		nextTypePattern := `(?mi)^\s*!Type:.*$`
 		nextTypeRe := regexp.MustCompile(nextTypePattern)
 		nextLoc := nextTypeRe.FindStringIndex(restOfText)
@@ -89,7 +94,7 @@ var tagsCmd = &cobra.Command{
 		if nextLoc != nil {
 			fmt.Printf("Next type found at:%d\n", nextLoc[1])
 			// Found another Type line.
-			endPos = loc[1] + nextLoc[0]
+			endPos = tagBlockEnd + nextLoc[0]
 		} else {
 			fmt.Printf("No next type block found.\n")
 			// No other Type found
@@ -97,7 +102,7 @@ var tagsCmd = &cobra.Command{
 		}
 
 		// Extract the text between the Type lines
-		textBetweenTypes := inputContent[loc[1]:endPos]
+		textBetweenTypes := inputContent[tagBlockEnd:endPos]
 
 		// Use the existing pattern to match entries
 		regex, _ := regexp.Compile(tagRecordRegex)
@@ -156,7 +161,7 @@ var tagsCmd = &cobra.Command{
 			// Loop through matches and add categories to the array
 			for _, t := range transactions {
 				if len(t) > 1 {
-					_, tag := splitCategoryAndTag(t[20])
+					_, tag := utils.SplitCategoryAndTag(t[20])
 					tag = strings.TrimSpace(tag)
 					if tag != "" {
 						// Remove double quotes

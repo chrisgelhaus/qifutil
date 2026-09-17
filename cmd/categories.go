@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
+Copyright © 2025 Chris Gelhaus
 */
 package cmd
 
@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"qifutil/pkg/utils"
 
 	"github.com/spf13/cobra"
 )
@@ -52,7 +54,7 @@ var categoriesCmd = &cobra.Command{
 			fmt.Println("Error creating category file:", err)
 			//return err
 		} else {
-			fmt.Println("Created catergory output file.")
+			fmt.Println("Created category output file.")
 		}
 		defer categoryFile.Close()
 
@@ -74,32 +76,30 @@ var categoriesCmd = &cobra.Command{
 			fmt.Println("Error compiling regular expression: ", err)
 		}
 		loc := catTypeRe.FindStringIndex(inputContent)
+		var catBlockEnd int
 		if loc == nil {
 			fmt.Printf("No Category block found.\n")
-			//return nil
 		} else {
-			// Debugging output
 			fmt.Printf("Category block found at position: %d\n", loc[1])
+			catBlockEnd = loc[1]
 		}
 
 		// Find the position of the next Type block
-		restOfText := inputContent[loc[1]:]
+		restOfText := inputContent[catBlockEnd:]
 		nextTypePattern := `(?mi)^\s*!Type:.*$`
 		nextTypeRe := regexp.MustCompile(nextTypePattern)
 		nextLoc := nextTypeRe.FindStringIndex(restOfText)
 		var endPos int
 		if nextLoc != nil {
 			fmt.Printf("Next type found at:%d\n", nextLoc[1])
-			// Found another Type line.
-			endPos = loc[1] + nextLoc[0]
+			endPos = catBlockEnd + nextLoc[0]
 		} else {
 			fmt.Printf("No next type block found.\n")
-			// No other Type found
 			endPos = len(inputContent)
 		}
 
 		// Extract the text between the Type lines
-		textBetweenTypes := inputContent[loc[1]:endPos]
+		textBetweenTypes := inputContent[catBlockEnd:endPos]
 
 		// Use the existing pattern to match entries
 		regex, _ := regexp.Compile(catRecordRegex)
@@ -161,7 +161,7 @@ var categoriesCmd = &cobra.Command{
 				if len(t) > 1 {
 					var category string = ""
 					rawcategory := strings.TrimSpace(t[20])
-					category, _ = splitCategoryAndTag(rawcategory)
+					category, _ = utils.SplitCategoryAndTag(rawcategory)
 
 					// If the category is not empty, add it to the list
 					if category != "" {
@@ -221,20 +221,4 @@ func init() {
 	categoriesCmd.Flags().StringVarP(&inputFile, "inputFile", "i", "", "Input QIF file")
 	categoriesCmd.Flags().StringVarP(&categoryOutputFile, "outputFile", "o", "categories.csv", "Output file for category names")
 	categoriesCmd.Flags().StringVarP(&outputFormat, "outputFormat", "f", "CSV", "Output format (CSV, JSON, XML).")
-}
-
-func splitCategoryAndTag(originalCategoryValue string) (category string, tag string) {
-	// TODO: Migrate to use utils.SplitCategoryAndTag
-	// If the category has a tag, split it out
-	if strings.Contains(originalCategoryValue, "/") {
-		// split the category and tag into separate strings and return the category
-		category = strings.Split(originalCategoryValue, "/")[0]
-		tag = strings.Split(originalCategoryValue, "/")[1]
-	} else {
-		// catgeory is the raw category
-		category = originalCategoryValue
-		tag = ""
-	}
-
-	return category, tag
 }

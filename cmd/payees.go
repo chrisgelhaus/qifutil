@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 Chris Gelhaus <chrisgelhaus@live.com>
+Copyright © 2025 Chris Gelhaus
 */
 package cmd
 
@@ -50,7 +50,7 @@ var payeesCmd = &cobra.Command{
 		if err != nil {
 			fmt.Println("Error creating category file:", err)
 		} else {
-			fmt.Println("Created catergory output file.")
+			fmt.Println("Created payee output file.")
 		}
 		defer payeeFile.Close()
 
