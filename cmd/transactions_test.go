@@ -514,3 +514,97 @@ func TestNineteenHundredsDatesAreExported(t *testing.T) {
 		t.Errorf("apostrophe-form date should export as 2023-01-05, got: %s", apostrophe)
 	}
 }
+
+// TestOptionalQIFFieldsAreNotDropped covers records that omit fields QIF treats
+// as optional, or that order them differently. A single pattern requiring
+// D, U, T, C and L in sequence silently loses all of these.
+func TestOptionalQIFFieldsAreNotDropped(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	setupTransactionExport(t)
+
+	qif := `!Account
+NChecking
+TBank
+^
+!Type:Bank
+D1/5'23
+U-10.00
+T-10.00
+CX
+PComplete
+Mall fields
+LFood:Dining
+^
+D1/6'23
+T-20.00
+CX
+PNo U field
+Mmissing U
+LFood:Dining
+^
+D1/7'23
+U-30.00
+T-30.00
+PNo C field
+Mmissing C
+LFood:Dining
+^
+D1/8'23
+U-40.00
+T-40.00
+CX
+PNo L field
+Mmissing L
+^
+D1/9'23
+U-50.00
+T-50.00
+CX
+LFood:Dining
+PReordered after L
+^
+D1/10'23
+T-60.00
+POnly T and P
+^
+`
+
+	sourceFile := filepath.Join(tempDir, "mixed.qif")
+	if err := os.WriteFile(sourceFile, []byte(qif), 0644); err != nil {
+		t.Fatalf("failed to write qif fixture: %v", err)
+	}
+
+	outputDir := filepath.Join(tempDir, "output")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		t.Fatalf("failed to create output dir: %v", err)
+	}
+	inputFile = sourceFile
+	outputPath = outputDir
+
+	helper.CaptureOutput(func() {
+		transactionsCmd.Run(transactionsCmd, []string{})
+	})
+
+	checkingFile := filepath.Join(outputDir, "Checking_1.csv")
+	helper.AssertFileExists(checkingFile)
+
+	for _, payee := range []string{
+		"Complete", "No U field", "No C field", "No L field",
+		"Reordered after L", "Only T and P",
+	} {
+		helper.AssertFileContains(checkingFile, payee)
+	}
+
+	// The amount must survive the fallback from U to T.
+	noU := lineContaining(t, checkingFile, "No U field")
+	if !strings.Contains(noU, "-20.00") {
+		t.Errorf("amount should fall back to the T field, got: %s", noU)
+	}
+
+	// A payee written after the category must still be read.
+	reordered := lineContaining(t, checkingFile, "Reordered after L")
+	if !strings.Contains(reordered, "Food:Dining") {
+		t.Errorf("reordered record lost its category, got: %s", reordered)
+	}
+}
