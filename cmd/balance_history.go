@@ -348,7 +348,15 @@ TIPS:
 		// Write balance history files
 		fileIndex := 1
 		count := 0
-		outputFileName := fmt.Sprintf("%s_balance_history_%d.csv", accountName, fileIndex)
+
+		// The account name may hold characters a file name cannot. A colon is
+		// the dangerous one: NTFS reads the rest of the name as an alternate
+		// data stream, so the run looks successful and leaves nothing visible.
+		fileBase := utils.SanitizeFileName(accountName)
+		if fileBase != accountName {
+			fmt.Printf("Note: account %q is written to files named %q\n", accountName, fileBase)
+		}
+		outputFileName := fmt.Sprintf("%s_balance_history_%d.csv", fileBase, fileIndex)
 		fmt.Printf("\nGenerating balance history for %s (File %d)\n", accountName, fileIndex)
 
 		fullPath := filepath.Join(outputPath, outputFileName)
@@ -386,7 +394,7 @@ TIPS:
 
 				// Start new file
 				fileIndex++
-				outputFileName = fmt.Sprintf("%s_balance_history_%d.csv", accountName, fileIndex)
+				outputFileName = fmt.Sprintf("%s_balance_history_%d.csv", fileBase, fileIndex)
 				fmt.Printf("Creating continuation file: %s (File %d)\n", outputFileName, fileIndex)
 
 				fullPath := filepath.Join(outputPath, outputFileName)

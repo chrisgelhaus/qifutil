@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -225,4 +226,34 @@ LFood:Dining
 	if !strings.Contains(string(content), "-30.00") {
 		t.Errorf("closing balance should be -30.00:\n%s", content)
 	}
+}
+
+// TestBalanceHistorySanitizesTheAccountNameForItsFileName covers the same trap
+// the transaction export had: a colon makes NTFS treat the rest of the name as
+// an alternate data stream, so the run reports success and writes nothing
+// visible. It runs the built binary because the failure path calls os.Exit,
+// which would take the test process down with it.
+func TestBalanceHistorySanitizesTheAccountNameForItsFileName(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+
+	qif := "!Account\nNAmex / Joint\nTCCard\n^\n!Type:CCard\n" +
+		"D1/5'23\nT-10.00\nPSlash Name\nLFood:Dining\n^\n"
+	if err := os.WriteFile(filepath.Join(tempDir, "slash.qif"), []byte(qif), 0644); err != nil {
+		t.Fatalf("failed to write qif fixture: %v", err)
+	}
+
+	cmd := exec.Command(qifutilBin, "export", "balance-history",
+		"-i", "slash.qif", "-o", ".",
+		"--accounts", "Amex / Joint", "--openingBalance", "0")
+	cmd.Dir = tempDir
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("balance-history failed for an account with a slash: %v\n%s", err, out)
+	}
+
+	result := filepath.Join(tempDir, "Amex _ Joint_balance_history_1.csv")
+	helper.AssertFileExists(result)
+	helper.AssertFileContains(result, "-10.00")
 }
