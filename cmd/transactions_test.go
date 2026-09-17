@@ -746,3 +746,129 @@ func TestExpandSplitsWarnsWhenSplitsDoNotReconcile(t *testing.T) {
 	// The split rows are still exported.
 	helper.AssertFileContains(filepath.Join(outputDir, "Checking_1.csv"), "-30.00")
 }
+
+const hostileNamesQIF = `!Account
+NAmex / Joint
+TCCard
+^
+!Type:CCard
+D1/5'23
+T-10.00
+PSlash Name
+LFood:Dining
+^
+!Account
+NFidelity: Roth
+TBank
+^
+!Type:Bank
+D1/6'23
+T-20.00
+PColon Name
+LFood:Dining
+^
+!Account
+NNormal Account
+TBank
+^
+!Type:Bank
+D1/7'23
+T-30.00
+PPlain Name
+LFood:Dining
+^
+`
+
+func TestAccountNamesAreSanitizedForFileNames(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	setupTransactionExport(t)
+
+	_, outputDir := exportInlineQIF(t, helper, tempDir, hostileNamesQIF)
+
+	// A slash would be read as a directory and a colon as an NTFS stream.
+	for name, payee := range map[string]string{
+		"Amex _ Joint_1.csv":   "Slash Name",
+		"Fidelity_ Roth_1.csv": "Colon Name",
+		"Normal Account_1.csv": "Plain Name",
+	} {
+		path := filepath.Join(outputDir, name)
+		helper.AssertFileExists(path)
+		helper.AssertFileContains(path, payee)
+	}
+}
+
+func TestCollidingAccountFileNamesAreDisambiguated(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	setupTransactionExport(t)
+
+	// "A/B" and "A_B" both sanitise to "A_B".
+	qif := `!Account
+NA/B
+TBank
+^
+!Type:Bank
+D1/5'23
+T-10.00
+PFirst Account
+LFood:Dining
+^
+!Account
+NA_B
+TBank
+^
+!Type:Bank
+D1/6'23
+T-20.00
+PSecond Account
+LFood:Dining
+^
+`
+
+	_, outputDir := exportInlineQIF(t, helper, tempDir, qif)
+
+	first := filepath.Join(outputDir, "A_B_1.csv")
+	helper.AssertFileExists(first)
+	helper.AssertFileContains(first, "First Account")
+
+	// The second account must not overwrite the first.
+	second := filepath.Join(outputDir, "A_B~2_1.csv")
+	helper.AssertFileExists(second)
+	helper.AssertFileContains(second, "Second Account")
+}
+
+func TestOneUnwritableAccountDoesNotAbortTheExport(t *testing.T) {
+	helper := test.NewHelper(t)
+	tempDir := helper.CreateTempDir()
+	setupTransactionExport(t)
+
+	sourceFile := filepath.Join(tempDir, "fixture.qif")
+	if err := os.WriteFile(sourceFile, []byte(hostileNamesQIF), 0644); err != nil {
+		t.Fatalf("failed to write qif fixture: %v", err)
+	}
+	outputDir := filepath.Join(tempDir, "output")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		t.Fatalf("failed to create output dir: %v", err)
+	}
+
+	// A directory where the first account's file belongs makes os.Create fail.
+	blocked := filepath.Join(outputDir, "Amex _ Joint_1.csv")
+	if err := os.MkdirAll(blocked, 0755); err != nil {
+		t.Fatalf("failed to create blocking directory: %v", err)
+	}
+
+	inputFile = sourceFile
+	outputPath = outputDir
+	output := helper.CaptureOutput(func() {
+		transactionsCmd.Run(transactionsCmd, []string{})
+	})
+
+	// The accounts after the failure must still be exported.
+	helper.AssertFileExists(filepath.Join(outputDir, "Fidelity_ Roth_1.csv"))
+	helper.AssertFileExists(filepath.Join(outputDir, "Normal Account_1.csv"))
+
+	if !strings.Contains(output, "Amex / Joint") {
+		t.Errorf("the skipped account should be named in the output, got:\n%s", output)
+	}
+}

@@ -338,7 +338,13 @@ MAPPING FILES:
 		// Initialize validation tracker for all accounts
 		validator := utils.NewValidationTracker()
 
+		// Account names are not file names, so the stems already written are
+		// tracked to keep two accounts from landing on the same file.
+		usedFileBases := make(map[string]bool)
+		skippedAccounts := 0
+
 		// loop over each account block and Find all transaction matches
+	accountLoop:
 		for _, accountBlock := range accountBlocks {
 			// Extract the account name from the matched block
 			accountName := inputContent[accountBlock[2]:accountBlock[3]]
@@ -389,29 +395,37 @@ MAPPING FILES:
 				ext = ".xml"
 			}
 
-			// Create unique output file per Account
-			outputFileName := fmt.Sprintf("%s_%d%s", accountName, fileIndex, ext)
+			// Create unique output file per Account. The account name may contain
+			// characters a file name cannot, so it is sanitised first.
+			fileBase := uniqueFileBase(accountName, usedFileBases)
+			if fileBase != accountName {
+				fmt.Printf("Note: account %q is written to files named %q\n", accountName, fileBase)
+			}
+			outputFileName := fmt.Sprintf("%s_%d%s", fileBase, fileIndex, ext)
 			fmt.Printf("\nProcessing %s (File %d)\n", accountName, fileIndex)
 
 			fullPath := filepath.Join(outputPath, outputFileName)
 			outputFile, err := os.Create(fullPath)
 			if err != nil {
 				fmt.Printf("Error creating file %s: %v\n", outputFileName, err)
-				return
+				skippedAccounts++
+				continue accountLoop
 			}
 			if strings.ToUpper(outputFormat) == "XML" {
 				_, err := outputFile.WriteString(xml.Header)
 				if err != nil {
 					outputFile.Close()
 					fmt.Printf("Error: failed to write XML header to %s: %v\n", outputFileName, err)
-					return
+					skippedAccounts++
+					continue accountLoop
 				}
 			}
 			if strings.ToUpper(outputFormat) == "CSV" {
 				if err := writeHeader(outputFile, outputCSVHeader); err != nil {
 					outputFile.Close()
 					fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
-					return
+					skippedAccounts++
+					continue accountLoop
 				}
 			}
 
@@ -556,7 +570,8 @@ MAPPING FILES:
 						if err := writeTransaction(outputFile, line); err != nil {
 							outputFile.Close()
 							fmt.Printf("failed to write transaction: %v\n", err)
-							return
+							skippedAccounts++
+							continue accountLoop
 						}
 					}
 					count++
@@ -568,13 +583,15 @@ MAPPING FILES:
 							if err != nil {
 								outputFile.Close()
 								fmt.Printf("Error: failed to marshal JSON data: %v\n", err)
-								return
+								skippedAccounts++
+								continue accountLoop
 							}
 							_, err = outputFile.Write(jsonData)
 							if err != nil {
 								outputFile.Close()
 								fmt.Printf("Error: failed to write JSON data to file: %v\n", err)
-								return
+								skippedAccounts++
+								continue accountLoop
 							}
 							records = nil
 						} else if strings.ToUpper(outputFormat) == "XML" {
@@ -582,13 +599,15 @@ MAPPING FILES:
 							if err != nil {
 								outputFile.Close()
 								fmt.Printf("Error: failed to marshal XML data: %v\n", err)
-								return
+								skippedAccounts++
+								continue accountLoop
 							}
 							_, err = outputFile.Write(xmlData)
 							if err != nil {
 								outputFile.Close()
 								fmt.Printf("Error: failed to write XML data to file: %v\n", err)
-								return
+								skippedAccounts++
+								continue accountLoop
 							}
 							records = nil
 						}
@@ -596,7 +615,7 @@ MAPPING FILES:
 
 						// Start new file
 						fileIndex++
-						outputFileName = fmt.Sprintf("%s_%d%s", accountName, fileIndex, ext)
+						outputFileName = fmt.Sprintf("%s_%d%s", fileBase, fileIndex, ext)
 						fullPath := filepath.Join(outputPath, outputFileName)
 						fmt.Printf("\nCreating split file for %s (File %d) - Records %d to %d\n",
 							accountName,
@@ -607,7 +626,8 @@ MAPPING FILES:
 						outputFile, err = os.Create(fullPath)
 						if err != nil {
 							fmt.Printf("Error creating split file %s: %v\n", outputFileName, err)
-							return
+							skippedAccounts++
+							continue accountLoop
 						}
 
 						// Write appropriate headers for the new file
@@ -616,14 +636,16 @@ MAPPING FILES:
 							if err != nil {
 								outputFile.Close()
 								fmt.Printf("Error: failed to write XML header to split file %s: %v\n", outputFileName, err)
-								return
+								skippedAccounts++
+								continue accountLoop
 							}
 						}
 						if strings.ToUpper(outputFormat) == "CSV" {
 							if err := writeHeader(outputFile, outputCSVHeader); err != nil {
 								outputFile.Close()
 								fmt.Printf("Error: failed to write header to %s: %v\n", outputFileName, err)
-								return
+								skippedAccounts++
+								continue accountLoop
 							}
 						}
 					}
@@ -635,13 +657,15 @@ MAPPING FILES:
 				if err != nil {
 					outputFile.Close()
 					fmt.Printf("Error: failed to marshal final JSON data: %v\n", err)
-					return
+					skippedAccounts++
+					continue accountLoop
 				}
 				_, err = outputFile.Write(jsonData)
 				if err != nil {
 					outputFile.Close()
 					fmt.Printf("Error: failed to write final JSON data to file: %v\n", err)
-					return
+					skippedAccounts++
+					continue accountLoop
 				}
 				records = nil
 			} else if strings.ToUpper(outputFormat) == "XML" && len(records) > 0 {
@@ -649,13 +673,15 @@ MAPPING FILES:
 				if err != nil {
 					outputFile.Close()
 					fmt.Printf("Error: failed to marshal final XML data: %v\n", err)
-					return
+					skippedAccounts++
+					continue accountLoop
 				}
 				_, err = outputFile.Write(xmlData)
 				if err != nil {
 					outputFile.Close()
 					fmt.Printf("Error: failed to write final XML data to file: %v\n", err)
-					return
+					skippedAccounts++
+					continue accountLoop
 				}
 				records = nil
 			}
@@ -664,6 +690,9 @@ MAPPING FILES:
 
 		// Print summary
 		fmt.Println("\nExport Summary:")
+		if skippedAccounts > 0 {
+			fmt.Printf("Accounts skipped after a write error: %d\n", skippedAccounts)
+		}
 		fmt.Printf("Input file: %s\n", inputFile)
 		if startDate != "" || endDate != "" {
 			start := "earliest"
@@ -779,6 +808,21 @@ func applyMapping(input string, mapping map[string]string) string {
 	}
 	// If no mapping is found, return the original input.
 	return input
+}
+
+// uniqueFileBase turns an account name into a file name stem that is safe to
+// write and distinct from the stems already used. Windows compares file names
+// without regard to case, so what is taken is recorded in lower case.
+func uniqueFileBase(accountName string, used map[string]bool) string {
+	base := utils.SanitizeFileName(accountName)
+
+	candidate := base
+	for suffix := 2; used[strings.ToLower(candidate)]; suffix++ {
+		candidate = fmt.Sprintf("%s~%d", base, suffix)
+	}
+
+	used[strings.ToLower(candidate)] = true
+	return candidate
 }
 
 // transactionRow is the part of an output row that differs between a plain
