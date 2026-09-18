@@ -141,3 +141,23 @@ func TestWizardReAsksForTheBalance(t *testing.T) {
 		t.Errorf("the balance history should still be produced:\n%s", out)
 	}
 }
+
+// TestWizardReAsksForTheBalanceAccount covers an account number outside the
+// list. It abandoned the balance history and still reported a completed
+// conversion, the same way the balance amount did.
+func TestWizardReAsksForTheBalanceAccount(t *testing.T) {
+	helper := test.NewHelper(t)
+	dir := helper.CreateTempDir()
+	helper.CopyTestData("sample.qif", filepath.Join(dir, "sample.qif"))
+
+	// balance history only; account 99 does not exist, then 1
+	out := runWizard(t, dir,
+		"n\nsample.qif\n./out\n2\n99\n1\n1\n5000.00\n\nn\n")
+
+	if strings.Contains(out, "Balance history will not be generated") {
+		t.Errorf("the wizard should re-ask for the account:\n%s", out)
+	}
+	if !strings.Contains(out, "Balance history generation completed successfully") {
+		t.Errorf("the balance history should still be produced:\n%s", out)
+	}
+}
