@@ -338,12 +338,18 @@ It will ask you questions and help you create the right command for your needs.`
 		fmt.Println("\nStep 3: Let me check what accounts are in your file...")
 
 		// Temporarily unset outputPath for account listing to avoid directory creation
+		var listErr error
 		accounts := captureOutput(func() {
-			// Create a new command instance for listing accounts
+			// Create a new command instance for listing accounts. It reports
+			// through RunE, so calling Run here would dereference nil.
 			tempCmd := *listAccountsCmd
 			tempCmd.SetArgs([]string{"--inputFile", inputFile})
-			tempCmd.Run(&tempCmd, []string{})
+			listErr = tempCmd.RunE(&tempCmd, []string{})
 		})
+		if listErr != nil {
+			fmt.Printf("\nError: could not read the accounts: %v\n", listErr)
+			return
+		}
 
 		// Parse the accounts output to get a clean list
 		accountList := parseAccountList(accounts)
