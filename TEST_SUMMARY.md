@@ -1,22 +1,27 @@
 # Test Suite
 
-Current as of v1.10.0. Run everything with `go test ./...`.
+Current as of v1.11.0. Run everything with `go test ./...`.
 
 ## Layout
 
 | File | Tests | Covers |
 |------|-------|--------|
-| `cmd/transactions_test.go` | 27 | the transactions export: output formats, column selection, mappings, splits, dates, file names, failure paths |
+| `cmd/transactions_test.go` | 27 | the transactions export: formats, column selection, mappings, splits, dates, file names, failure paths |
 | `cmd/lists_test.go` | 9 | categories, payees, tags, account-stats and balance-history |
-| `cmd/wizard_test.go` | 1 | the wizard forwards the mapping files it collected |
+| `cmd/validation_test.go` | 7 | duplicates, unmapped values and unused mapping rules |
+| `cmd/wizard_options_test.go` | 5 | the options the wizard offers, and that it does not claim success after a failure |
+| `cmd/wizard_test.go` | 4 | the wizard flow, driven through a pipe as a person drives it |
+| `cmd/columns_test.go` | 4 | `--csvColumns` validation |
+| `cmd/split_test.go` | 3 | file splitting, including the exact boundary |
 | `pkg/utils/record_test.go` | 6 | the QIF record parser: field codes, optional fields, field order, split lines |
-| `pkg/utils/qifdate_test.go` | 2 | the date parser: century from the separator, four digit years, padding, invalid input |
 | `pkg/utils/validation_test.go` | 11 | the validation tracker |
+| `pkg/utils/validation_log_test.go` | 3 | log ordering and formatting |
+| `pkg/utils/qifdate_test.go` | 2 | the date parser: century from the separator, four digit years, padding |
 | `pkg/utils/filename_test.go` | 1 | replacing characters a file name cannot hold |
 | `pkg/utils/category_test.go` | 1 | splitting a category from its tag |
 | `pkg/config/config_test.go` | 9 | wizard config load and save |
 
-67 top level tests; 126 counting table cases separately.
+91 top level tests; 151 counting table cases separately.
 
 ## What the tests are for
 

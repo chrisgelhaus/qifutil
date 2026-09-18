@@ -1,15 +1,15 @@
 # QIFUTIL
 
-**Latest Update (v1.10.0):** Transactions that were being silently dropped are now exported, and failures are reported instead of passing unnoticed.
-- 🧾 **QIF read field by field** - records are no longer matched against one rigid pattern, so transactions missing optional fields, or writing them in a different order, are no longer skipped without a word. The sample file in this repository exported 53 of its 58 transactions before this change.
-- 🗂️ **`--preserveOriginalCategory`** - append the pre-mapping category to Notes, so `Insurance` can be traced back to `Insurance:Auto` after import
-- ✂️ **`--expandSplits`** - export each line item of a split transaction as its own row, keeping its own category and amount
-- 📅 **Dates before 2000** - the separator before the year carries the century, so 1990s registers are no longer lost
-- 📁 **Account names in file names** - characters a file name cannot hold are replaced rather than failing the run or, in the case of a colon, hiding the data in an NTFS alternate data stream
-- ⚠️ **Failures are reported** - commands return errors instead of ending the process, so nothing fails quietly and every failure path can be tested
-- 📋 **Previous (v1.9.0):** Improved QIF parsing, validation logging, and mapping reliability
+**Latest Update (v1.11.0):** The wizard works again, and the validation reporting the summary promised now actually runs.
+- 🧙 **Wizard fixed** - `qifutil wizard` crashed before listing a single account for the whole of 1.10.0. It also gave up on a mistyped filename instead of re-asking, and accepted an empty path in a way that shifted every later answer by one
+- 🗂️ **Wizard offers the newer options** - the original-category note and split expansion are reachable without using flags, and are saved with the rest of your answers
+- 🔍 **Validation reporting runs** - duplicate transactions, unmapped values and unused mapping rules were all advertised in the summary and never computed
+- 📉 **Quieter mappings** - one count per mapping instead of a line for every value changed
+- 📄 **No stray split file** - a record count landing exactly on the boundary left a file holding nothing but a header
+- ✅ **Column names checked** - a misspelled `--csvColumns` name is refused rather than producing a silently blank column
+- 📋 **Previous (v1.10.0):** QIF read field by field, dates before 2000, account names in file names, failures reported
 
-Core improvements: correct parsing of real-world QIF, no silent data loss, and failures that say so.
+Core improvements: the wizard is usable again, and the tool no longer reports checks it never performed.
 
 ## Quick Start Guide
 
