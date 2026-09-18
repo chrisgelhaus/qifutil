@@ -180,11 +180,7 @@ TIPS:
 		inputContent = strings.ReplaceAll(inputContent, "\r\n", "\n")
 
 		// Find the account block for the selected account
-		accountBlockHeaderRegex := `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
-		regex, err := regexp.Compile(accountBlockHeaderRegex)
-		if err != nil {
-			return fmt.Errorf("compiling account block pattern: %w", err)
-		}
+		regex := accountBlockPattern
 
 		accountBlocks := regex.FindAllStringSubmatchIndex(inputContent, -1)
 		var selectedBlockContent string

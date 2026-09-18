@@ -6,7 +6,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -85,11 +84,7 @@ TIPS:
 		}
 
 		// Regex pattern to match account blocks
-		accountBlockHeaderRegex := `!Account\nN(.*?)\nT(.*?)\n\^\n!Type:(.*?)\n`
-		regex, err := regexp.Compile(accountBlockHeaderRegex)
-		if err != nil {
-			return fmt.Errorf("compiling account block pattern: %w", err)
-		}
+		regex := anyAccountBlockPattern
 
 		// Find all account blocks with positions
 		accountBlocksIdx := regex.FindAllStringSubmatchIndex(inputContent, -1)

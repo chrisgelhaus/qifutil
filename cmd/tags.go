@@ -46,9 +46,6 @@ var tagsCmd = &cobra.Command{
 		cmd.SilenceUsage = true
 
 		var tags []string
-		var tagRecordRegex string = `(?m)(^N(.*)\n^(D(.*)\n^)?\^\n)`
-		var tagBlockHeaderRegex string = `(?m)^!Type:Tag\n`
-		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
 		// Build output file path using outputPath if provided
 		outputFilePath := tagsOutputFile
@@ -80,7 +77,7 @@ var tagsCmd = &cobra.Command{
 		inputContent = strings.ReplaceAll(inputContent, "\r\n", "\n")
 
 		// Find the position of the Tag Block
-		tagTypeRe, err := regexp.Compile(tagBlockHeaderRegex)
+		tagTypeRe := tagBlockPattern
 		if err != nil {
 			fmt.Println("Error compiling regular expression: ", err)
 		}
@@ -115,7 +112,7 @@ var tagsCmd = &cobra.Command{
 		textBetweenTypes := inputContent[tagBlockEnd:endPos]
 
 		// Use the existing pattern to match entries
-		regex, _ := regexp.Compile(tagRecordRegex)
+		regex := tagRecordPattern
 
 		// Find all matches in the content.
 		matches := regex.FindAllStringSubmatch(textBetweenTypes, -1)
@@ -135,7 +132,7 @@ var tagsCmd = &cobra.Command{
 
 		// Gather categories from the Accounts
 		// Compile the regex
-		regex, _ = regexp.Compile(accountBlockHeaderRegex)
+		regex = accountBlockPattern
 
 		accountBlocks := regex.FindAllStringSubmatchIndex(inputContent, -1)
 		if len(accountBlocks) == 0 {

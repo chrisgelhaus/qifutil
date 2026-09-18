@@ -236,7 +236,6 @@ MAPPING FILES:
 		}
 
 		// Output CSV Header
-		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
 		// If MONARCH format is specified, use the default columns
 		columnsToUse := csvColumns
@@ -336,10 +335,7 @@ MAPPING FILES:
 
 		// Gather the Account Blocks
 		// Compile the regex
-		regex, err := regexp.Compile(accountBlockHeaderRegex)
-		if err != nil {
-			return fmt.Errorf("compiling account block pattern: %w", err)
-		}
+		regex := accountBlockPattern
 		accountBlocks := regex.FindAllStringSubmatchIndex(inputContent, -1)
 		if len(accountBlocks) == 0 {
 			fmt.Println("No matches found.")

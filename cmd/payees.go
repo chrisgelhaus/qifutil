@@ -47,7 +47,6 @@ var payeesCmd = &cobra.Command{
 
 
 		var payees []string
-		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
 		// Build output file path using outputPath if provided
 		outputFilePath := payeeOutputFile
@@ -80,7 +79,7 @@ var payeesCmd = &cobra.Command{
 
 		// Gather payees from the Accounts
 		// Compile the regex
-		regex, _ := regexp.Compile(accountBlockHeaderRegex)
+		regex := accountBlockPattern
 
 		accountBlocks := regex.FindAllStringSubmatchIndex(inputContent, -1)
 		if len(accountBlocks) == 0 {
