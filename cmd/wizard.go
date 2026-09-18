@@ -16,17 +16,38 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// wizardChoices is everything the wizard collected, in one value. These were
+// a dozen separate parameters, several named almost identically to package
+// level variables, which is how the mapping files came to be read from the
+// wrong place and silently dropped.
+type wizardChoices struct {
+	exportTransactions     bool
+	generateBalanceHistory bool
+	balanceHistoryAccount  string
+	balanceHistoryValue    string
+	balanceHistoryOpening  bool
+
+	categoryMapFile string
+	payeeMapFile    string
+	accountMapFile  string
+	tagMapFile      string
+
+	skipZeroAmounts          bool
+	preserveOriginalCategory bool
+	expandSplits             bool
+
+	// usingLoadedConfig suppresses the offer to save what was just loaded.
+	usingLoadedConfig bool
+}
+
 // executeConversion performs the actual conversion with given parameters
-func executeConversion(reader *bufio.Reader, exportTransactions, generateBalanceHistoryLocal bool,
-	balanceHistoryAccount string, balanceHistoryValue string, isBalanceHistoryOpening bool,
-	categoryMapFile, payeeMapFile, accountMapFile, tagMapFile string, skipZeroAmountsLocal bool,
-	usingLoadedConfig bool) {
+func executeConversion(reader *bufio.Reader, choices wizardChoices) {
 	// Show confirmation and execute
 	fmt.Println("\nGreat! I'm ready to convert your file. Here's what I'm going to do:")
 	fmt.Printf("- Read from: %s\n", inputFile)
 	fmt.Printf("- Save to: %s\n", outputPath)
 
-	if exportTransactions {
+	if choices.exportTransactions {
 		fmt.Println("- Export type: Transactions")
 		if selectedAccounts != "" {
 			fmt.Printf("  • Accounts: %s\n", selectedAccounts)
@@ -35,28 +56,28 @@ func executeConversion(reader *bufio.Reader, exportTransactions, generateBalance
 		}
 	}
 
-	if generateBalanceHistoryLocal {
+	if choices.generateBalanceHistory {
 		fmt.Println("- Balance history details:")
-		fmt.Printf("  • Account: %s\n", balanceHistoryAccount)
+		fmt.Printf("  • Account: %s\n", choices.balanceHistoryAccount)
 	}
 
-	if categoryMapFile != "" || payeeMapFile != "" || accountMapFile != "" || tagMapFile != "" {
+	if choices.categoryMapFile != "" || choices.payeeMapFile != "" || choices.accountMapFile != "" || choices.tagMapFile != "" {
 		fmt.Println("- Mappings to apply:")
-		if categoryMapFile != "" {
-			fmt.Printf("  • Categories: %s\n", categoryMapFile)
+		if choices.categoryMapFile != "" {
+			fmt.Printf("  • Categories: %s\n", choices.categoryMapFile)
 		}
-		if payeeMapFile != "" {
-			fmt.Printf("  • Payees: %s\n", payeeMapFile)
+		if choices.payeeMapFile != "" {
+			fmt.Printf("  • Payees: %s\n", choices.payeeMapFile)
 		}
-		if accountMapFile != "" {
-			fmt.Printf("  • Accounts: %s\n", accountMapFile)
+		if choices.accountMapFile != "" {
+			fmt.Printf("  • Accounts: %s\n", choices.accountMapFile)
 		}
-		if tagMapFile != "" {
-			fmt.Printf("  • Tags: %s\n", tagMapFile)
+		if choices.tagMapFile != "" {
+			fmt.Printf("  • Tags: %s\n", choices.tagMapFile)
 		}
 	}
 
-	if skipZeroAmountsLocal {
+	if choices.skipZeroAmounts {
 		fmt.Println("- Options:")
 		fmt.Println("  • Skip zero-amount transactions: Yes")
 	}
@@ -93,30 +114,41 @@ func executeConversion(reader *bufio.Reader, exportTransactions, generateBalance
 	if endDate != "" {
 		transactionArgs = append(transactionArgs, "--endDate", endDate)
 	}
-	if categoryMapFile != "" {
-		transactionArgs = append(transactionArgs, "--categoryMapFile", categoryMapFile)
+	if choices.categoryMapFile != "" {
+		transactionArgs = append(transactionArgs, "--categoryMapFile", choices.categoryMapFile)
 	}
-	if payeeMapFile != "" {
-		transactionArgs = append(transactionArgs, "--payeeMapFile", payeeMapFile)
+	if choices.payeeMapFile != "" {
+		transactionArgs = append(transactionArgs, "--payeeMapFile", choices.payeeMapFile)
 	}
-	if accountMapFile != "" {
-		transactionArgs = append(transactionArgs, "--accountMapFile", accountMapFile)
+	if choices.accountMapFile != "" {
+		transactionArgs = append(transactionArgs, "--accountMapFile", choices.accountMapFile)
 	}
-	if tagMapFile != "" {
-		transactionArgs = append(transactionArgs, "--tagMapFile", tagMapFile)
+	if choices.tagMapFile != "" {
+		transactionArgs = append(transactionArgs, "--tagMapFile", choices.tagMapFile)
 	}
 
-	if skipZeroAmountsLocal {
+	if choices.skipZeroAmounts {
 		transactionArgs = append(transactionArgs, "--skipZeroAmounts")
 	}
+	if choices.preserveOriginalCategory {
+		transactionArgs = append(transactionArgs, "--preserveOriginalCategory")
+	}
+	if choices.expandSplits {
+		transactionArgs = append(transactionArgs, "--expandSplits")
+	}
 
-	if exportTransactions {
+	// The export reports failure rather than ending the process, so a failed
+	// run must not be followed by a cheerful summary.
+	if choices.exportTransactions {
 		rootCmd.SetArgs(transactionArgs)
-		rootCmd.Execute()
+		if err := rootCmd.Execute(); err != nil {
+			fmt.Println("\nThe conversion did not finish. Nothing above was saved.")
+			return
+		}
 	}
 
 	// Generate balance history if requested
-	if generateBalanceHistoryLocal && balanceHistoryAccount != "" {
+	if choices.generateBalanceHistory && choices.balanceHistoryAccount != "" {
 		fmt.Println("\nGenerating balance history...")
 
 		balanceHistoryArgs := []string{
@@ -124,13 +156,13 @@ func executeConversion(reader *bufio.Reader, exportTransactions, generateBalance
 			"balance-history",
 			"--inputFile", inputFile,
 			"--outputPath", outputPath,
-			"--accounts", balanceHistoryAccount,
+			"--accounts", choices.balanceHistoryAccount,
 		}
 
-		if isBalanceHistoryOpening {
-			balanceHistoryArgs = append(balanceHistoryArgs, "--openingBalance", balanceHistoryValue)
+		if choices.balanceHistoryOpening {
+			balanceHistoryArgs = append(balanceHistoryArgs, "--openingBalance", choices.balanceHistoryValue)
 		} else {
-			balanceHistoryArgs = append(balanceHistoryArgs, "--currentBalance", balanceHistoryValue)
+			balanceHistoryArgs = append(balanceHistoryArgs, "--currentBalance", choices.balanceHistoryValue)
 		}
 
 		if startDate != "" {
@@ -141,29 +173,34 @@ func executeConversion(reader *bufio.Reader, exportTransactions, generateBalance
 		}
 
 		rootCmd.SetArgs(balanceHistoryArgs)
-		rootCmd.Execute()
+		if err := rootCmd.Execute(); err != nil {
+			fmt.Println("\nThe balance history did not finish.")
+			return
+		}
 	}
 
 	// Offer to save configuration for future use
 	fmt.Println("\nConversion completed!")
 	// Only offer to save if not using a previously loaded config (which would be redundant)
-	if !usingLoadedConfig && getYesNoResponse(reader, "\nWould you like to save this configuration for future use? (y/n): ") {
+	if !choices.usingLoadedConfig && getYesNoResponse(reader, "\nWould you like to save this configuration for future use? (y/n): ") {
 		cfg := &config.WizardConfig{
-			InputFile:             inputFile,
-			OutputPath:            outputPath,
-			ExportTransactions:    exportTransactions,
-			ExportBalanceHistory:  generateBalanceHistoryLocal,
-			BalanceHistoryAccount: balanceHistoryAccount,
-			SelectedAccounts:      selectedAccounts,
-			StartDate:             startDate,
-			EndDate:               endDate,
-			OutputFormat:          outputFormat,
-			CategoryMapFile:       categoryMapFile,
-			PayeeMapFile:          payeeMapFile,
-			AccountMapFile:        accountMapFile,
-			TagMapFile:            tagMapFile,
-			AddTagForImport:       addTagForImport,
-			SkipZeroAmounts:       skipZeroAmountsLocal,
+			InputFile:                inputFile,
+			OutputPath:               outputPath,
+			ExportTransactions:       choices.exportTransactions,
+			ExportBalanceHistory:     choices.generateBalanceHistory,
+			BalanceHistoryAccount:    choices.balanceHistoryAccount,
+			SelectedAccounts:         selectedAccounts,
+			StartDate:                startDate,
+			EndDate:                  endDate,
+			OutputFormat:             outputFormat,
+			CategoryMapFile:          choices.categoryMapFile,
+			PayeeMapFile:             choices.payeeMapFile,
+			AccountMapFile:           choices.accountMapFile,
+			TagMapFile:               choices.tagMapFile,
+			AddTagForImport:          addTagForImport,
+			SkipZeroAmounts:          choices.skipZeroAmounts,
+			PreserveOriginalCategory: choices.preserveOriginalCategory,
+			ExpandSplits:             choices.expandSplits,
 		}
 
 		for {
@@ -271,10 +308,21 @@ It will ask you questions and help you create the right command for your needs.`
 			}
 
 			// Show confirmation and execute
-			executeConversion(reader, savedConfig.ExportTransactions, generateBalanceHistoryLocal,
-				savedConfig.BalanceHistoryAccount, savedConfig.BalanceHistoryValue, savedConfig.BalanceHistoryOpening,
-				savedConfig.CategoryMapFile, savedConfig.PayeeMapFile, savedConfig.AccountMapFile, savedConfig.TagMapFile,
-				savedConfig.SkipZeroAmounts, true)
+			executeConversion(reader, wizardChoices{
+				exportTransactions:       savedConfig.ExportTransactions,
+				generateBalanceHistory:   generateBalanceHistoryLocal,
+				balanceHistoryAccount:    savedConfig.BalanceHistoryAccount,
+				balanceHistoryValue:      savedConfig.BalanceHistoryValue,
+				balanceHistoryOpening:    savedConfig.BalanceHistoryOpening,
+				categoryMapFile:          savedConfig.CategoryMapFile,
+				payeeMapFile:             savedConfig.PayeeMapFile,
+				accountMapFile:           savedConfig.AccountMapFile,
+				tagMapFile:               savedConfig.TagMapFile,
+				skipZeroAmounts:          savedConfig.SkipZeroAmounts,
+				preserveOriginalCategory: savedConfig.PreserveOriginalCategory,
+				expandSplits:             savedConfig.ExpandSplits,
+				usingLoadedConfig:        true,
+			})
 			return
 		}
 
@@ -582,16 +630,44 @@ It will ask you questions and help you create the right command for your needs.`
 			}
 		}
 
+		// A category mapping replaces one category with another, and this
+		// records what was replaced. Without a mapping there is nothing to
+		// record, so the question is only worth asking when one was given.
+		var preserveNoteLocal bool
+		if exportTransactions && categoryMapFile != "" {
+			preserveNoteLocal = getYesNoResponse(reader,
+				"\nRecord the original category in the Notes column, so a mapped"+
+					" category can be traced back? (y/n): ")
+		}
+
 		// Ask about data quality options
 		var skipZeroAmountsLocal bool = false
 		if exportTransactions && getYesNoResponse(reader, "\nWould you like to skip zero-amount transactions? (y/n): ") {
 			skipZeroAmountsLocal = true
 		}
 
+		var expandSplitsLocal bool
+		if exportTransactions {
+			expandSplitsLocal = getYesNoResponse(reader,
+				"\nExport each part of a split transaction as its own row,"+
+					" keeping its own category? (y/n): ")
+		}
+
 		// Execute the conversion
-		executeConversion(reader, exportTransactions, generateBalanceHistoryLocal,
-			balanceHistoryAccount, balanceHistoryValue, isBalanceHistoryOpening,
-			categoryMapFile, payeeMapFile, accountMapFile, tagMapFile, skipZeroAmountsLocal, false)
+		executeConversion(reader, wizardChoices{
+			exportTransactions:       exportTransactions,
+			generateBalanceHistory:   generateBalanceHistoryLocal,
+			balanceHistoryAccount:    balanceHistoryAccount,
+			balanceHistoryValue:      balanceHistoryValue,
+			balanceHistoryOpening:    isBalanceHistoryOpening,
+			categoryMapFile:          categoryMapFile,
+			payeeMapFile:             payeeMapFile,
+			accountMapFile:           accountMapFile,
+			tagMapFile:               tagMapFile,
+			skipZeroAmounts:          skipZeroAmountsLocal,
+			preserveOriginalCategory: preserveNoteLocal,
+			expandSplits:             expandSplitsLocal,
+		})
 	},
 }
 

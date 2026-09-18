@@ -32,8 +32,10 @@ type WizardConfig struct {
 	TagMapFile      string `json:"tagMapFile"`
 
 	// Options
-	AddTagForImport  bool `json:"addTagForImport"`
-	SkipZeroAmounts  bool `json:"skipZeroAmounts"`
+	AddTagForImport          bool `json:"addTagForImport"`
+	SkipZeroAmounts          bool `json:"skipZeroAmounts"`
+	PreserveOriginalCategory bool `json:"preserveOriginalCategory"`
+	ExpandSplits             bool `json:"expandSplits"`
 }
 
 // LoadConfig loads configuration from a JSON file
@@ -100,6 +102,14 @@ func (c *WizardConfig) String() string {
 
 	if c.OutputFormat != "" {
 		summary += fmt.Sprintf("  Format: %s\n", c.OutputFormat)
+	}
+
+	if c.PreserveOriginalCategory {
+		summary += "  Original category recorded in Notes\n"
+	}
+
+	if c.ExpandSplits {
+		summary += "  Split transactions expanded into separate rows\n"
 	}
 
 	if c.CategoryMapFile != "" || c.PayeeMapFile != "" || c.AccountMapFile != "" || c.TagMapFile != "" {

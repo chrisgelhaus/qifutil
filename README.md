@@ -359,6 +359,31 @@ Account mapping file (drag and drop, or press Enter to skip): C:\mappings\accoun
 Tag mapping file (drag and drop, or press Enter to skip): C:\mappings\tags.csv
 ```
 
+### Options the Wizard Offers
+
+After the mapping files, the wizard asks about the settings that change the
+shape of the export:
+
+```
+Record the original category in the Notes column, so a mapped category
+can be traced back? (y/n): y
+```
+
+This one is only asked when you supplied a category mapping, since without a
+mapping there is no original to record. It corresponds to
+`--preserveOriginalCategory`.
+
+```
+Would you like to skip zero-amount transactions? (y/n): n
+Export each part of a split transaction as its own row, keeping its own
+category? (y/n): y
+```
+
+Corresponding to `--skipZeroAmounts` and `--expandSplits`.
+
+All of these are saved with the rest of your answers if you choose to save the
+configuration, so loading it reproduces the same export.
+
 ### Using Mapping Files from Command Line
 
 ```sh

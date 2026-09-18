@@ -34,8 +34,11 @@ func TestWizardForwardsMappingFiles(t *testing.T) {
 	// level variables stay empty, exactly as on a fresh wizard run.
 	reader := bufio.NewReader(strings.NewReader("\n"))
 	helper.CaptureOutput(func() {
-		executeConversion(reader, true, false, "", "", false,
-			categoryMap, "", "", "", false, true)
+		executeConversion(reader, wizardChoices{
+			exportTransactions: true,
+			categoryMapFile:    categoryMap,
+			usingLoadedConfig:  true,
+		})
 	})
 
 	checkingFile := filepath.Join(outputDir, "Checking Account_1.csv")
