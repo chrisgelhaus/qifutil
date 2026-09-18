@@ -471,20 +471,28 @@ It will ask you questions and help you create the right command for your needs.`
 
 				isBalanceHistoryOpening = balanceChoice == "2"
 
-				if isBalanceHistoryOpening {
-					fmt.Print("Enter the opening balance (starting amount): ")
-				} else {
-					fmt.Print("Enter the current balance (ending amount): ")
-				}
-				balanceInput, _ := reader.ReadString('\n')
-				balanceInput = strings.TrimSpace(balanceInput)
+				// Keep asking rather than abandoning the balance history and
+				// carrying on to report a completed conversion.
+				for {
+					if isBalanceHistoryOpening {
+						fmt.Print("Enter the opening balance (starting amount): ")
+					} else {
+						fmt.Print("Enter the current balance (ending amount): ")
+					}
+					balanceInput, readErr := reader.ReadString('\n')
+					balanceInput = strings.TrimSpace(balanceInput)
 
-				// Validate balance is a number
-				if _, err := strconv.ParseFloat(balanceInput, 64); err != nil {
-					fmt.Printf("Invalid balance: %v. Balance history will not be generated.\n", err)
-					generateBalanceHistoryLocal = false
-				} else {
-					balanceHistoryValue = balanceInput
+					if _, err := strconv.ParseFloat(balanceInput, 64); err == nil {
+						balanceHistoryValue = balanceInput
+						break
+					}
+
+					if readErr != nil {
+						fmt.Println("No balance given. Balance history will not be generated.")
+						generateBalanceHistoryLocal = false
+						break
+					}
+					fmt.Printf("%q is not a number. Enter an amount such as 5000.00.\n", balanceInput)
 				}
 			} else {
 				fmt.Println("Invalid account number. Balance history will not be generated.")
