@@ -453,12 +453,27 @@ It will ask you questions and help you create the right command for your needs.`
 			generateBalanceHistoryLocal = true
 
 			fmt.Println("\nBalance history shows account balance changes over time (useful for Monarch Money).")
-			fmt.Print("Enter the account number for balance history (see list above): ")
-			accountInput, _ := reader.ReadString('\n')
-			accountInput = strings.TrimSpace(accountInput)
+			// Keep asking rather than abandoning the balance history and going on
+			// to report a completed conversion.
+			accountNum := 0
+			for {
+				fmt.Print("Enter the account number for balance history (see list above): ")
+				accountInput, readErr := reader.ReadString('\n')
+				accountInput = strings.TrimSpace(accountInput)
 
-			// Validate account number
-			if accountNum, err := strconv.Atoi(accountInput); err == nil && accountNum > 0 && accountNum <= len(accountList) {
+				num, err := strconv.Atoi(accountInput)
+				if err == nil && num > 0 && num <= len(accountList) {
+					accountNum = num
+					break
+				}
+
+				if readErr != nil {
+					break
+				}
+				fmt.Printf("Enter a number between 1 and %d.\n", len(accountList))
+			}
+
+			if accountNum > 0 {
 				balanceHistoryAccount = accountList[accountNum-1]
 				fmt.Printf("Selected account: %s\n", balanceHistoryAccount)
 
@@ -471,20 +486,28 @@ It will ask you questions and help you create the right command for your needs.`
 
 				isBalanceHistoryOpening = balanceChoice == "2"
 
-				if isBalanceHistoryOpening {
-					fmt.Print("Enter the opening balance (starting amount): ")
-				} else {
-					fmt.Print("Enter the current balance (ending amount): ")
-				}
-				balanceInput, _ := reader.ReadString('\n')
-				balanceInput = strings.TrimSpace(balanceInput)
+				// Keep asking rather than abandoning the balance history and
+				// carrying on to report a completed conversion.
+				for {
+					if isBalanceHistoryOpening {
+						fmt.Print("Enter the opening balance (starting amount): ")
+					} else {
+						fmt.Print("Enter the current balance (ending amount): ")
+					}
+					balanceInput, readErr := reader.ReadString('\n')
+					balanceInput = strings.TrimSpace(balanceInput)
 
-				// Validate balance is a number
-				if _, err := strconv.ParseFloat(balanceInput, 64); err != nil {
-					fmt.Printf("Invalid balance: %v. Balance history will not be generated.\n", err)
-					generateBalanceHistoryLocal = false
-				} else {
-					balanceHistoryValue = balanceInput
+					if _, err := strconv.ParseFloat(balanceInput, 64); err == nil {
+						balanceHistoryValue = balanceInput
+						break
+					}
+
+					if readErr != nil {
+						fmt.Println("No balance given. Balance history will not be generated.")
+						generateBalanceHistoryLocal = false
+						break
+					}
+					fmt.Printf("%q is not a number. Enter an amount such as 5000.00.\n", balanceInput)
 				}
 			} else {
 				fmt.Println("Invalid account number. Balance history will not be generated.")

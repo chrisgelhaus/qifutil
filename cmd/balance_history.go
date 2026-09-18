@@ -308,7 +308,7 @@ TIPS:
 				balanceFloat += dailyBalances[dateStr]
 				balanceRecords = append(balanceRecords, BalanceRecord{
 					Date:    dateStr,
-					Balance: fmt.Sprintf("%.2f", balanceFloat),
+					Balance: formatBalance(balanceFloat),
 				})
 			}
 		} else {
@@ -325,7 +325,7 @@ TIPS:
 				currentBal += dailyBalances[dateStr]
 				balanceRecords = append(balanceRecords, BalanceRecord{
 					Date:    dateStr,
-					Balance: fmt.Sprintf("%.2f", currentBal),
+					Balance: formatBalance(currentBal),
 				})
 			}
 		}
@@ -459,6 +459,17 @@ func init() {
 }
 
 // sortDates sorts a slice of date strings in YYYY-MM-DD format
+// formatBalance renders a balance to two decimal places. A running total
+// that lands a hair below zero would otherwise print as "-0.00", which
+// reads as wrong in a balance column.
+func formatBalance(value float64) string {
+	formatted := fmt.Sprintf("%.2f", value)
+	if formatted == "-0.00" {
+		return "0.00"
+	}
+	return formatted
+}
+
 func sortDates(dates []string) {
 	for i := 0; i < len(dates); i++ {
 		for j := i + 1; j < len(dates); j++ {
