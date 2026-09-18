@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"os"
 	"path/filepath"
 	"testing"
@@ -138,10 +139,10 @@ func TestWizardConfigString(t *testing.T) {
 	if summary == "" {
 		t.Error("String() returned empty string")
 	}
-	if !contains(summary, "test.qif") {
+	if !strings.Contains(summary, "test.qif") {
 		t.Error("String() should contain InputFile")
 	}
-	if !contains(summary, "/output") {
+	if !strings.Contains(summary, "/output") {
 		t.Error("String() should contain OutputPath")
 	}
 }
@@ -169,16 +170,16 @@ func TestWizardConfigStringWithAllFields(t *testing.T) {
 	}
 
 	// Verify key sections are present
-	if !contains(summary, "test.qif") {
+	if !strings.Contains(summary, "test.qif") {
 		t.Error("Should contain InputFile")
 	}
-	if !contains(summary, "Both transactions and balance history") {
+	if !strings.Contains(summary, "Both transactions and balance history") {
 		t.Error("Should indicate both exports")
 	}
-	if !contains(summary, "Checking") {
+	if !strings.Contains(summary, "Checking") {
 		t.Error("Should contain BalanceHistoryAccount")
 	}
-	if !contains(summary, "categories.csv") {
+	if !strings.Contains(summary, "categories.csv") {
 		t.Error("Should contain CategoryMapFile")
 	}
 }
@@ -263,21 +264,3 @@ func TestWizardConfigSaveAndLoadBalanceHistory(t *testing.T) {
 	}
 }
 
-// Helper function to check if string contains substring
-func contains(str, substr string) bool {
-	return len(str) > 0 && len(substr) > 0 && (str == substr || len(str) >= len(substr) && (substr == str[:len(substr)] || substr == str[len(str)-len(substr):] || len(str) > len(substr)+1))
-	// Simple contains check
-	for i := 0; i <= len(str)-len(substr); i++ {
-		match := true
-		for j := 0; j < len(substr); j++ {
-			if str[i+j] != substr[j] {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
-}

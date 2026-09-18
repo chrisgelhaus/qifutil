@@ -21,43 +21,39 @@ where the two disagree, this file is right.
 | Validation reporting that never ran | duplicates, unmapped values and unused rules are computed now | unreleased |
 | `applyMapping` scanned the whole map | a lookup, and one count per mapping instead of a line per value | unreleased |
 | Unmapped list ordered at random | ranged over a map; ordered by frequency now | unreleased |
+| Empty trailing file on an exact split boundary | both exports opened a file for records that never arrived | unreleased |
+| Unknown `--csvColumns` names | a typo produced a blank column; refused now, with the valid names listed | unreleased |
+| Regex errors discarded with `_` | patterns are compiled once at package level | unreleased |
+| The account block pattern written out seven times | one shared variable | unreleased |
+| A broken `contains` helper in config_test.go | six assertions passed whatever they were given | unreleased |
+| Empty `PostRun` hooks | removed from accounts and export | unreleased |
+| `go vet` failure | the tree is clean, and CI runs `go vet ./...` | unreleased |
+| `friendlyError` never called | deleted; see below | unreleased |
 | Summary named a log file that is not written | it pointed at `validation.log` | unreleased |
 
 ## 🟠 Open
 
-### Ignored regex compilation errors
-`regex, _ := regexp.Compile(...)` still discards the error in three places:
-`categories.go:115`, `payees.go:83`, `tags.go:118`. These patterns are constants,
-so a failure would be a defect in the program rather than bad input, but the
-error should be returned rather than dropped.
-
-### Unknown `--csvColumns` names produce blank columns
-`buildCSVRow` falls through to an empty string for a name it does not recognise,
-so a typo yields a silently blank column. `--csvColumns` is also ignored without
-comment for JSON and XML.
-
-### Money held in `float64`
-`balance-history` accumulates balances in `float64`. Over a long register the
-running total drifts. Integer cents is the usual fix.
-
-### CSV injection
-Values are quoted but not guarded against a leading `=`, `+` or `@`. Low risk for
-your own data, and note that a naive fix breaks negative amounts.
-
-### `friendlyError` is never called
-`cmd/errors.go` turns common failures into multi-line guidance and has no
-callers. Now that commands return errors there is somewhere to route them
-through.
-
-### Empty `PostRun` hooks
-`accounts.go` and `export.go` define `PostRun` and `PersistentPostRun` bodies
-that do nothing.
-
-### `go vet` failure in a test
-`pkg/config/config_test.go:270` has unreachable code. Worth fixing and wiring
-`go vet` into CI.
+Nothing outstanding from this review.
 
 ## 🔵 Noted, not planned
+
+**CSV injection.** Values beginning with `=`, `+` or `@` are exported as they
+appear. The data is the user's own Quicken file going into their own
+spreadsheet, so the untrusted-input threat this warning is written for does not
+apply here, and every mitigation alters the payee name that reaches the import:
+`+1-555-CALL` would become `'+1-555-CALL`. Deliberately left alone.
+
+**`friendlyError`** was deleted rather than wired in. Its three branches looked
+for unix phrasing (`no such file`, `permission denied`) that this tool never
+produces: Windows reports "The system cannot find the file specified", and the
+commands name the file and the operation themselves. Routing errors through it
+would have replaced specific messages with a generic help block.
+
+**`float64` money** was listed here as a correctness risk. Measured rather
+than assumed: 20,000 transactions of -0.07 against an opening balance of
+9,999,999.99 ends at exactly 9,998,599.99. float64 carries 15 to 16
+significant digits, so reaching half a cent of error needs orders of magnitude
+more arithmetic than this tool performs. Not worth a change.
 
 **Split transactions** are supported through `--expandSplits`. Without the flag a
 split still exports as a single row at the transaction total, which is the

@@ -279,29 +279,52 @@ It will ask you questions and help you create the right command for your needs.`
 		}
 
 		// Get input file
-		fmt.Print("\nStep 1: Where is your QIF file? (Enter the file path): ")
-		inputPath, _ := reader.ReadString('\n')
-		// Clean the path from PowerShell artifacts
-		inputPath = strings.TrimSpace(inputPath)
-		inputPath = strings.TrimPrefix(inputPath, "& ") // Remove PowerShell invoke operator
-		inputPath = strings.Trim(inputPath, "'\"")      // Remove both single and double quotes
+		// Keep asking rather than ending the wizard: a mistyped path is the
+		// likeliest mistake here, and every other prompt re-asks.
+		for {
+			fmt.Print("\nStep 1: Where is your QIF file? (Enter the file path): ")
+			inputPath, readErr := reader.ReadString('\n')
+			// Clean the path from PowerShell artifacts
+			inputPath = strings.TrimSpace(inputPath)
+			inputPath = strings.TrimPrefix(inputPath, "& ") // Remove PowerShell invoke operator
+			inputPath = strings.Trim(inputPath, "'\"")      // Remove both single and double quotes
 
-		// Convert input path to absolute and clean it
-		cleanInputPath := filepath.Clean(inputPath)
-		if !filepath.IsAbs(cleanInputPath) {
-			var err error
-			cleanInputPath, err = filepath.Abs(cleanInputPath)
-			if err != nil {
-				fmt.Printf("Error with input path: %v\n", err)
-				return
+			if inputPath == "" {
+				// An empty path resolves to the current directory, which exists,
+				// so it would pass the check below and take the next answer as
+				// the output location.
+				if readErr != nil {
+					fmt.Println("\nNo file given. Stopping.")
+					return
+				}
+				fmt.Println("A file path is required.")
+				continue
 			}
-		}
-		inputFile = cleanInputPath
 
-		if _, err := os.Stat(inputFile); os.IsNotExist(err) {
-			fmt.Printf("\nError: Could not find file: %s\n", inputFile)
-			fmt.Println("Please make sure the file exists and try again.")
-			return
+			// Convert input path to absolute and clean it
+			cleanInputPath := filepath.Clean(inputPath)
+			if !filepath.IsAbs(cleanInputPath) {
+				var err error
+				cleanInputPath, err = filepath.Abs(cleanInputPath)
+				if err != nil {
+					fmt.Printf("Error with input path: %v\n", err)
+					continue
+				}
+			}
+
+			info, err := os.Stat(cleanInputPath)
+			if err != nil {
+				fmt.Printf("\nError: Could not find file: %s\n", cleanInputPath)
+				fmt.Println("Please make sure the file exists and try again.")
+				continue
+			}
+			if info.IsDir() {
+				fmt.Printf("\nThat is a folder, not a file: %s\n", cleanInputPath)
+				continue
+			}
+
+			inputFile = cleanInputPath
+			break
 		}
 
 		// Get output location
@@ -338,12 +361,18 @@ It will ask you questions and help you create the right command for your needs.`
 		fmt.Println("\nStep 3: Let me check what accounts are in your file...")
 
 		// Temporarily unset outputPath for account listing to avoid directory creation
+		var listErr error
 		accounts := captureOutput(func() {
-			// Create a new command instance for listing accounts
+			// Create a new command instance for listing accounts. It reports
+			// through RunE, so calling Run here would dereference nil.
 			tempCmd := *listAccountsCmd
 			tempCmd.SetArgs([]string{"--inputFile", inputFile})
-			tempCmd.Run(&tempCmd, []string{})
+			listErr = tempCmd.RunE(&tempCmd, []string{})
 		})
+		if listErr != nil {
+			fmt.Printf("\nError: could not read the accounts: %v\n", listErr)
+			return
+		}
 
 		// Parse the accounts output to get a clean list
 		accountList := parseAccountList(accounts)

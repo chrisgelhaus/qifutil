@@ -6,7 +6,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -64,11 +63,7 @@ TIPS:
 		inputContent = strings.ReplaceAll(inputContent, "\r\n", "\n")
 
 		// Regex pattern to match account blocks
-		accountBlockHeaderRegex := `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
-		regex, err := regexp.Compile(accountBlockHeaderRegex)
-		if err != nil {
-			return fmt.Errorf("compiling account block pattern: %w", err)
-		}
+		regex := accountBlockPattern
 
 		// Find all account blocks
 		accountBlocks := regex.FindAllStringSubmatch(inputContent, -1)

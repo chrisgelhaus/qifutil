@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -46,7 +45,6 @@ var accountsCmd = &cobra.Command{
 
 
 		var accountNames []string
-		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
 		// Build output file path using outputPath if provided
 		outputFilePath := accountOutputFile
@@ -79,10 +77,7 @@ var accountsCmd = &cobra.Command{
 
 		// Gather the Accounts
 		// Compile the regex
-		regex, err := regexp.Compile(accountBlockHeaderRegex)
-		if err != nil {
-			fmt.Println("Error collecting accounts:", err)
-		}
+		regex := accountBlockPattern
 		accountBlocks := regex.FindAllStringSubmatchIndex(inputContent, -1)
 		if len(accountBlocks) == 0 {
 			fmt.Println("No matches found.")
@@ -127,10 +122,6 @@ var accountsCmd = &cobra.Command{
 
 
 		return nil
-	},
-	PostRun: func(cmd *cobra.Command, args []string) {
-	},
-	PersistentPostRun: func(cmd *cobra.Command, args []string) {
 	},
 }
 

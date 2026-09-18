@@ -99,8 +99,10 @@ OPTIONS:
   --inputFile          Required. Path to the QIF file to process
   --outputPath         Required. Directory where CSV files will be created
   --outputFormat       Optional. Output format: CSV, JSON, XML, or MONARCH (default: CSV)
-  --csvColumns         Optional. Comma-separated column names for CSV output
-                       (only applies to CSV format). Default is Monarch format.
+  --csvColumns         Optional. Comma-separated column names for CSV output.
+                       An unrecognised name is refused. Only applies to CSV
+                       output; ignored with a note for JSON and XML.
+                       Default is Monarch format.
   --accounts           Optional. Comma-separated list of accounts to process
   --categoryMapFile    Optional. CSV file mapping source to target categories
   --accountMapFile     Optional. CSV file mapping source to target account names
@@ -234,13 +236,23 @@ MAPPING FILES:
 		}
 
 		// Output CSV Header
-		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
 		// If MONARCH format is specified, use the default columns
 		columnsToUse := csvColumns
 		if strings.ToUpper(outputFormat) == "MONARCH" {
 			columnsToUse = DefaultMonarchColumns
 			outputFormat = "CSV" // Internally treat MONARCH as CSV
+		}
+
+		// A misspelled column used to produce a column that was blank in every
+		// row, which is easy to miss in a file of thousands.
+		if strings.ToUpper(outputFormat) == "CSV" {
+			if err := validateCSVColumns(columnsToUse); err != nil {
+				return err
+			}
+		} else if columnsToUse != DefaultMonarchColumns {
+			fmt.Printf("Note: --csvColumns does not apply to %s output and is ignored\n",
+				strings.ToUpper(outputFormat))
 		}
 
 		var outputCSVHeader string = columnsToUse + "\n"
@@ -323,10 +335,7 @@ MAPPING FILES:
 
 		// Gather the Account Blocks
 		// Compile the regex
-		regex, err := regexp.Compile(accountBlockHeaderRegex)
-		if err != nil {
-			return fmt.Errorf("compiling account block pattern: %w", err)
-		}
+		regex := accountBlockPattern
 		accountBlocks := regex.FindAllStringSubmatchIndex(inputContent, -1)
 		if len(accountBlocks) == 0 {
 			fmt.Println("No matches found.")
@@ -593,23 +602,10 @@ MAPPING FILES:
 						Tags:              tag,
 					}
 
-					// JSON and XML are marshalled as a whole document, so their
-					// records are collected and written when the file is closed.
-					format := strings.ToUpper(outputFormat)
-					if format == "JSON" || format == "XML" {
-						records = append(records, record)
-					} else {
-						line := buildCSVRow(record, columnsToUse)
-						if err := writeTransaction(outputFile, line); err != nil {
-							outputFile.Close()
-							fmt.Printf("failed to write transaction: %v\n", err)
-							skippedAccounts++
-							continue accountLoop
-						}
-					}
-					count++
-					// Check if we need to split the file
-					if maxRecordsPerFile != 0 && count%maxRecordsPerFile == 0 {
+					// Roll to the next file before writing, not after. Opening it at
+					// the boundary created a file for records that never arrived,
+					// leaving one holding nothing but a header.
+					if maxRecordsPerFile != 0 && count > 0 && count%maxRecordsPerFile == 0 {
 						// Close current file
 						if strings.ToUpper(outputFormat) == "JSON" {
 							jsonData, err := json.MarshalIndent(records, "", "  ")
@@ -682,6 +678,22 @@ MAPPING FILES:
 							}
 						}
 					}
+
+					// JSON and XML are marshalled as a whole document, so their
+					// records are collected and written when the file is closed.
+					format := strings.ToUpper(outputFormat)
+					if format == "JSON" || format == "XML" {
+						records = append(records, record)
+					} else {
+						line := buildCSVRow(record, columnsToUse)
+						if err := writeTransaction(outputFile, line); err != nil {
+							outputFile.Close()
+							fmt.Printf("failed to write transaction: %v\n", err)
+							skippedAccounts++
+							continue accountLoop
+						}
+					}
+					count++
 
 				}
 			}
@@ -1013,32 +1025,43 @@ func writeHeader(f *os.File, h string) error {
 	return err
 }
 
+// csvColumnValue maps a column name to the value it takes from a record. It
+// is the single source both for the names --csvColumns accepts and for what
+// each one writes, so the two cannot drift apart.
+var csvColumnValue = map[string]func(TransactionRecord) string{
+	"Date":               func(r TransactionRecord) string { return r.Date },
+	"Merchant":           func(r TransactionRecord) string { return r.Merchant },
+	"Category":           func(r TransactionRecord) string { return r.Category },
+	"Account":            func(r TransactionRecord) string { return r.Account },
+	"Original Statement": func(r TransactionRecord) string { return r.OriginalStatement },
+	"Notes":              func(r TransactionRecord) string { return r.Notes },
+	"Amount":             func(r TransactionRecord) string { return r.Amount },
+	"Tags":               func(r TransactionRecord) string { return r.Tags },
+}
+
+// validateCSVColumns reports the first name --csvColumns does not recognise.
+func validateCSVColumns(columns string) error {
+	for _, name := range strings.Split(columns, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if _, ok := csvColumnValue[name]; !ok {
+			return fmt.Errorf("unknown column %q in --csvColumns; valid names are %s",
+				name, DefaultMonarchColumns)
+		}
+	}
+	return nil
+}
+
 // buildCSVRow builds a CSV row from a TransactionRecord based on specified columns
 func buildCSVRow(record TransactionRecord, columns string) string {
 	columnList := strings.Split(columns, ",")
 	values := make([]string, len(columnList))
 
 	for i, col := range columnList {
-		col = strings.TrimSpace(col)
-		switch col {
-		case "Date":
-			values[i] = record.Date
-		case "Merchant":
-			values[i] = record.Merchant
-		case "Category":
-			values[i] = record.Category
-		case "Account":
-			values[i] = record.Account
-		case "Original Statement":
-			values[i] = record.OriginalStatement
-		case "Notes":
-			values[i] = record.Notes
-		case "Amount":
-			values[i] = record.Amount
-		case "Tags":
-			values[i] = record.Tags
-		default:
-			values[i] = ""
+		if value, ok := csvColumnValue[strings.TrimSpace(col)]; ok {
+			values[i] = value(record)
 		}
 	}
 

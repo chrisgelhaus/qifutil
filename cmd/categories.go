@@ -46,9 +46,6 @@ var categoriesCmd = &cobra.Command{
 		cmd.SilenceUsage = true
 
 		var categories []string
-		var catRecordRegex string = `(?m)(^N(.*)\n(^D(.*)\n)?(^T(.*)\n)?(^R(.*)\n)?(^E(.*)\n)?(^I(.*)\n)?^\^\n)`
-		var catBlockHeaderRegex string = `(?m)^!Type:Cat\n`
-		var accountBlockHeaderRegex string = `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
 
 		// Build output file path using outputPath if provided
 		outputFilePath := categoryOutputFile
@@ -81,7 +78,7 @@ var categoriesCmd = &cobra.Command{
 		inputContent = strings.ReplaceAll(inputContent, "\r\n", "\n")
 
 		// Find the position of the Category Block
-		catTypeRe, err := regexp.Compile(catBlockHeaderRegex)
+		catTypeRe := categoryBlockPattern
 		if err != nil {
 			fmt.Println("Error compiling regular expression: ", err)
 		}
@@ -112,7 +109,7 @@ var categoriesCmd = &cobra.Command{
 		textBetweenTypes := inputContent[catBlockEnd:endPos]
 
 		// Use the existing pattern to match entries
-		regex, _ := regexp.Compile(catRecordRegex)
+		regex := categoryRecordPattern
 
 		// Find all matches in the content.
 		matches := regex.FindAllStringSubmatch(textBetweenTypes, -1)
@@ -130,7 +127,7 @@ var categoriesCmd = &cobra.Command{
 
 		// Gather categories from the Accounts
 		// Compile the regex
-		regex, _ = regexp.Compile(accountBlockHeaderRegex)
+		regex = accountBlockPattern
 
 		accountBlocks := regex.FindAllStringSubmatchIndex(inputContent, -1)
 		if len(accountBlocks) == 0 {

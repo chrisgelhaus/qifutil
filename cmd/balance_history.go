@@ -180,11 +180,7 @@ TIPS:
 		inputContent = strings.ReplaceAll(inputContent, "\r\n", "\n")
 
 		// Find the account block for the selected account
-		accountBlockHeaderRegex := `(?m)^!Account[^\n]*\n^N(.*?)\n^T(.*?)\n^\^\n^!Type:(Bank|CCard)\s*\n`
-		regex, err := regexp.Compile(accountBlockHeaderRegex)
-		if err != nil {
-			return fmt.Errorf("compiling account block pattern: %w", err)
-		}
+		regex := accountBlockPattern
 
 		accountBlocks := regex.FindAllStringSubmatchIndex(inputContent, -1)
 		var selectedBlockContent string
@@ -366,16 +362,10 @@ TIPS:
 
 		// Write balance records
 		for _, record := range balanceRecords {
-			line := fmt.Sprintf("%s,%s\n", record.Date, record.Balance)
-			if _, err := outputFile.WriteString(line); err != nil {
-				outputFile.Close()
-				return fmt.Errorf("writing record to %s: %w", outputFileName, err)
-			}
-
-			count++
-
-			// Check if we need to split the file
-			if maxRecordsPerFile != 0 && count%maxRecordsPerFile == 0 {
+			// Roll to the next file before writing, not after. Opening it at
+			// the boundary created a file for records that never arrived,
+			// leaving one holding nothing but a header.
+			if maxRecordsPerFile != 0 && count > 0 && count%maxRecordsPerFile == 0 {
 				outputFile.Close()
 
 				// Start new file
@@ -395,6 +385,15 @@ TIPS:
 					return fmt.Errorf("writing header to %s: %w", outputFileName, err)
 				}
 			}
+
+			line := fmt.Sprintf("%s,%s\n", record.Date, record.Balance)
+			if _, err := outputFile.WriteString(line); err != nil {
+				outputFile.Close()
+				return fmt.Errorf("writing record to %s: %w", outputFileName, err)
+			}
+
+			count++
+
 		}
 
 		outputFile.Close()

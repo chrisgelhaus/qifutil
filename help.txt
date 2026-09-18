@@ -33,8 +33,10 @@ OPTIONS:
   --inputFile          Required. Path to the QIF file to process
   --outputPath         Required. Directory where CSV files will be created
   --outputFormat       Optional. Output format: CSV, JSON, XML, or MONARCH (default: CSV)
-  --csvColumns         Optional. Comma-separated column names for CSV output
-                       (only applies to CSV format). Default is Monarch format.
+  --csvColumns         Optional. Comma-separated column names for CSV output.
+                       An unrecognised name is refused. Only applies to CSV
+                       output; ignored with a note for JSON and XML.
+                       Default is Monarch format.
   --accounts           Optional. Comma-separated list of accounts to process
   --categoryMapFile    Optional. CSV file mapping source to target categories
   --accountMapFile     Optional. CSV file mapping source to target account names
