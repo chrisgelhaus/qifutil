@@ -1,5 +1,150 @@
 # QIFUTIL Release Notes
 
+## Version 1.11.0 - The Wizard, and Reporting That Runs
+
+**Release Date:** September 18, 2026
+
+### The wizard was crashing
+
+`qifutil wizard` died before listing a single account:
+
+```
+Step 3: Let me check what accounts are in your file...
+panic: runtime error: invalid memory address or nil pointer dereference
+```
+
+Step 3 lists accounts by copying the `list-accounts` command and calling `Run` on
+the copy. When the commands stopped calling `os.Exit` in 1.10.0 and moved to
+`RunE`, `Run` became nil. The wizard has been unusable for the whole of 1.10.0.
+It is the entry point new users are pointed at, and nothing caught it: its only
+test covered a helper rather than the flow.
+
+Two more problems at the prompt people reach first:
+
+- A mistyped filename printed "Could not find file" and **ended the wizard**, so
+  the whole run had to be started again. Every other prompt re-asks on bad
+  input; this one gave up.
+- Pressing Enter was accepted. The empty path resolved to the current directory,
+  which exists, so it passed the check and the *next* answer was read as the
+  output location. The wizard created a directory named after the QIF file and
+  carried on with every later answer shifted by one.
+
+The wizard also printed `Conversion completed!` whatever happened. Since the
+commands now report failure rather than ending the process, a run that failed on
+a missing mapping file still finished with a cheerful summary.
+
+### The wizard offers the newer options
+
+Neither `--preserveOriginalCategory` nor `--expandSplits` could be reached from
+the wizard. Both are about keeping categories intact, which is what most of the
+recent work has been about:
+
+```
+Record the original category in the Notes column, so a mapped category
+can be traced back? (y/n): y
+
+Export each part of a split transaction as its own row, keeping its own
+category? (y/n): y
+```
+
+The first is asked only when a category mapping was given, since without one
+there is no original to record. Both are saved with the rest of your answers, so
+a saved configuration reproduces the same export.
+
+### Validation reporting that actually runs
+
+The summary and the validation log had full sections for duplicate transactions,
+unmapped values and unused mapping rules. None of the three was ever computed:
+the tool reported that it had checked for duplicates, and it had not.
+
+```
+⚠️  Data Validation Summary:
+  • Potential duplicates: 1 groups detected
+    - 2023-01-15 | Grocery Store | -45.23 (2 times)
+  • Category mapping: 2 rules never used
+    - "Also:Wrong"
+    - "Typo:Categry"
+  • Unmapped values: 1 different payees/categories not in mapping files
+```
+
+Duplicates are counted per account on date, payee and amount, and tallied once
+per transaction rather than once per row, so a split is not mistaken for a
+repeat. The count does not cross account boundaries, because the same date,
+payee and amount in two accounts is what a transfer between them looks like.
+Unmapped values are recorded only where a mapping file was supplied; without one
+every value is unmapped and the list says nothing.
+
+The unmapped list also came out in a different order on every run, because it
+ranged over a map. It is ordered by frequency now, so the values worth adding to
+a mapping file come first. Entries read `category:Food:Dining` with the kind
+jammed onto the value; they now read `category "Food:Dining"`. And the summary
+pointed at `validation.log`, which neither export writes.
+
+### Mapping output
+
+Tracking which rules a mapping used meant `applyMapping` became a type that owns
+its rules. It looks a value up rather than scanning every rule for each
+transaction, and the line it printed for every value changed - thousands on a
+real file, burying the summary - is replaced by one count per mapping:
+
+```
+Category mapping: applied to 2 values
+```
+
+### Split files
+
+Both commands that split their output closed the full file and opened the next
+one *after* writing the record that filled it. When the count divided exactly,
+that file was opened for records that never arrived and left holding nothing but
+a header:
+
+```
+10 transactions at 5 per file -> Checking_1.csv, Checking_2.csv,
+                                 Checking_3.csv (header only)
+```
+
+Splitting exists for Monarch's row limit, so anyone who hits it squarely got a
+file that may fail on import.
+
+### Column names are checked
+
+A misspelled name in `--csvColumns` fell through to an empty string, so the
+column was blank in every row and nothing said why:
+
+```
+$ qifutil export transactions ... --csvColumns "Date,Merchent,Amount"
+Error: unknown column "Merchent" in --csvColumns; valid names are
+Date,Merchant,Category,Account,Original Statement,Notes,Amount,Tags
+```
+
+Passing the flag with JSON or XML output, where it does nothing, prints a note
+rather than failing.
+
+### Housekeeping
+
+- Five places compiled a QIF pattern and discarded the error with `_`. The
+  account block pattern was written out identically in seven command files. All
+  of it is now compiled once, at package level.
+- `friendlyError` was deleted rather than wired in. Its branches matched unix
+  phrasing this tool never produces - Windows reports "The system cannot find
+  the file specified" - so every error would have fallen to its default branch
+  and been replaced by a generic help block.
+- `go vet ./...` is clean, and CI runs it.
+
+### Testing
+
+91 tests, up from 67. The wizard had one, covering a helper; it has nine now,
+each driving the built binary through a pipe as a person does.
+
+A note recorded in CODE_REVIEW.md: `float64` money in balance-history was listed
+as a correctness risk and has been measured rather than assumed. 20,000
+transactions of -0.07 against an opening balance of 9,999,999.99 end at exactly
+9,998,599.99. Not worth a change. CSV injection is likewise left alone
+deliberately: the data is your own file going into your own spreadsheet, and
+every mitigation alters the payee name that reaches the import.
+
+---
+
 ## Version 1.10.0 - Correct Parsing and Reported Failures
 
 **Release Date:** September 16, 2026
